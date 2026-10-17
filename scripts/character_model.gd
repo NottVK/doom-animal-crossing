@@ -59,6 +59,25 @@ static func mat(color: Color, alpha := false, double_sided := false) -> ShaderMa
 	return m
 
 
+## Cambia los materiales de un modelo importado (.glb) por el material toon del juego,
+## conservando su color (y su brillo, si lo tiene).
+static func apply_toon(root: Node) -> void:
+	if root is MeshInstance3D:
+		var mi := root as MeshInstance3D
+		for i in mi.mesh.get_surface_count():
+			var src := mi.mesh.surface_get_material(i) as BaseMaterial3D
+			if src == null:
+				continue
+			var color := src.albedo_color
+			var m := mat(color, color.a < 0.99)
+			if src.emission_enabled:
+				m.set_shader_parameter("emission_color", src.emission)
+				m.set_shader_parameter("emission_energy", src.emission_energy_multiplier)
+			mi.set_surface_override_material(i, m)
+	for child in root.get_children():
+		apply_toon(child)
+
+
 ## Material que brilla (grieta, brasas).
 static func glow_mat(base: Color, glow: Color, energy: float) -> ShaderMaterial:
 	var m := mat(base)

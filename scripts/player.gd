@@ -18,7 +18,9 @@ var lane_limits := Callable()
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _camera: Camera3D
 var _model: Node3D
-var _arm_r: Node3D
+var _arm_r: Node3D          # solo con el modelo de respaldo (primitivas)
+var _anim: AnimationPlayer  # solo con el modelo .glb
+var _anim_playing := ""
 var _net_area: Area3D
 var _interact_area: Area3D
 var _target: Node3D = null
@@ -29,6 +31,7 @@ var _shake_t := 0.0
 var _shake_amp := 0.0
 
 const SWING_TIME := 0.35
+const MODEL_PATH := "res://assets/models/canelita.glb"
 
 
 func _ready() -> void:
@@ -43,11 +46,9 @@ func _ready() -> void:
 	shape.position.y = 0.75
 	add_child(shape)
 
-	_model = CharacterModel.build("dog", Color(0.98, 0.82, 0.3), Color(0.55, 0.78, 0.4))
+	_model = _load_model()
 	_model.rotation.y = -PI / 2.0   # mira a la derecha
 	add_child(_model)
-	_arm_r = _model.get_node("ArmR")
-	_attach_net(_arm_r)
 
 	_net_area = Area3D.new()
 	_net_area.collision_layer = 0
@@ -81,6 +82,46 @@ func _ready() -> void:
 	_publish_camera()
 
 
+## Modelo 3D de Blender (tools/blender); si falta, usa el de primitivas.
+func _load_model() -> Node3D:
+	if ResourceLoader.exists(MODEL_PATH):
+		var scene := load(MODEL_PATH) as PackedScene
+		if scene:
+			var inst := scene.instantiate() as Node3D
+			CharacterModel.apply_toon(inst)
+			_anim = _find_anim_player(inst)
+			if _anim:
+				for anim_name in _anim.get_animation_list():
+					if String(anim_name).begins_with("idle") or String(anim_name).begins_with("walk"):
+						_anim.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
+				_play("idle")
+			return inst
+	var fallback := CharacterModel.build("dog", Color(0.98, 0.82, 0.3), Color(0.55, 0.78, 0.4))
+	_arm_r = fallback.get_node("ArmR")
+	_attach_net(_arm_r)
+	return fallback
+
+
+func _find_anim_player(node: Node) -> AnimationPlayer:
+	if node is AnimationPlayer:
+		return node
+	for child in node.get_children():
+		var found := _find_anim_player(child)
+		if found:
+			return found
+	return null
+
+
+func _play(prefix: String, blend := 0.12) -> void:
+	if _anim == null or _anim_playing == prefix:
+		return
+	for anim_name in _anim.get_animation_list():
+		if String(anim_name).begins_with(prefix):
+			_anim_playing = prefix
+			_anim.play(anim_name, blend)
+			return
+
+
 func _attach_net(arm: Node3D) -> void:
 	CharacterModel.add_mesh(arm, CharacterModel.capsule(0.025, 1.4), Color(0.55, 0.38, 0.24),
 			Vector3(0, -0.45, -0.7), Vector3.ONE, Vector3(90, 0, 0))
@@ -107,6 +148,7 @@ func swing_net() -> void:
 		return
 	_swing_cool = 0.5
 	_swing_t = SWING_TIME
+	_anim_playing = ""
 	for area in _net_area.get_overlapping_areas():
 		if area.has_method("catch_me"):
 			area.call("catch_me")
@@ -169,17 +211,26 @@ func _publish_camera() -> void:
 func _process(delta: float) -> void:
 	_swing_cool = maxf(0.0, _swing_cool - delta)
 	var move := clampf(Vector2(velocity.x, velocity.z).length() / walk_speed, 0.0, 1.2)
-	_anim_t += delta * (0.6 + move * 0.5)
-	CharacterModel.animate(_model, _anim_t, move if is_on_floor() else 0.0)
-	_model.position.y = absf(sin(_anim_t * 10.0)) * 0.06 * move if is_on_floor() else 0.0
-
-	# Brazo derecho: reposo con la red en alto, y golpe hacia abajo al balancear.
-	if _swing_t > 0.0:
-		_swing_t = maxf(0.0, _swing_t - delta)
-		var k := 1.0 - _swing_t / SWING_TIME
-		_arm_r.rotation.x = lerpf(2.3, 0.2, ease(k, 0.4))
+	_swing_t = maxf(0.0, _swing_t - delta)
+	if _anim:
+		if _swing_t > 0.0:
+			_play("swing", 0.05)
+		elif move > 0.1 and is_on_floor():
+			_play("walk")
+			_anim.speed_scale = clampf(move, 0.6, 1.5)
+		else:
+			_play("idle")
+			_anim.speed_scale = 1.0
 	else:
-		_arm_r.rotation.x = lerpf(_arm_r.rotation.x, 0.6, delta * 10.0)
+		_anim_t += delta * (0.6 + move * 0.5)
+		CharacterModel.animate(_model, _anim_t, move if is_on_floor() else 0.0)
+		_model.position.y = absf(sin(_anim_t * 10.0)) * 0.06 * move if is_on_floor() else 0.0
+		# Brazo derecho: reposo con la red en alto, y golpe hacia abajo al balancear.
+		if _swing_t > 0.0:
+			var k := 1.0 - _swing_t / SWING_TIME
+			_arm_r.rotation.x = lerpf(2.3, 0.2, ease(k, 0.4))
+		else:
+			_arm_r.rotation.x = lerpf(_arm_r.rotation.x, 0.6, delta * 10.0)
 
 	_camera.global_position = _camera.global_position.lerp(_camera_target(), 1.0 - exp(-6.0 * delta))
 	_publish_camera()
