@@ -16,6 +16,13 @@ config/features=PackedStringArray("4.4", "GL Compatibility")
 InputSetup="*res://scripts/input_setup.gd"
 Story="*res://scripts/story.gd"
 
+[shader_globals]
+
+curve_cam_pos={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+
 [display]
 
 window/size/viewport_width=1280

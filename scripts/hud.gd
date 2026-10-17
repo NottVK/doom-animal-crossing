@@ -31,7 +31,7 @@ func _ready() -> void:
 	_refresh()
 	var tw := create_tween()
 	tw.tween_property(_fade, "color:a", 0.0, 1.5)
-	toast("WASD mover · Shift correr · Espacio saltar · F / clic red · E hablar · Esc suelta el ratón", 7.0)
+	toast("Bienvenida a Isla Calma", 4.0)
 
 
 func _style(bg: Color) -> StyleBoxFlat:
@@ -65,7 +65,7 @@ func _build_ui() -> void:
 	add_child(stats_panel)
 
 	_hint = _label(16, Color.WHITE)
-	_hint.text = "Clic para capturar el ratón · Esc para soltarlo"
+	_hint.text = "← → mover · ↑ ↓ profundidad (en las zonas del camino) · Shift correr · Espacio saltar · F / clic red · E hablar"
 	add_child(_hint)
 
 	_toast = _label(20, Color.WHITE)

@@ -5,8 +5,10 @@ Proyecto en **Godot 4.4** (GDScript, renderer GL Compatibility).
 
 ## Estado: Parte 1 — la isla, antes de que llegue el Slayer
 
-- Isla 3D explorable con plaza, casas, árboles, flores y ciclo día/noche.
-- **Canelita** (placeholder hecho con primitivas) en tercera persona: caminar, correr, saltar y red de atrapar mariposas.
+- Isla en **2.5D de lado** (estilo Undertale): caminas a izquierda/derecha por un carril y solo hay profundidad
+  en zonas concretas (plaza, puertas de las casas, playa).
+- Look Animal Crossing: horizonte curvado, colores pastel, luz suave, colinas y nubes (shader en `character_model.gd`).
+- **Canelita** (placeholder hecho con primitivas): caminar, correr, saltar y red de atrapar mariposas.
 - Aldeanos con diálogo que cambia según la fase de la historia.
 - 10 mariposas que revolotean; al atrapar 5 la tierra tiembla y se abre una **grieta** en la plaza (fin del capítulo 1).
 - Interfaz estilo Animal Crossing (paneles crema, diálogo con máquina de escribir).
@@ -18,8 +20,8 @@ Proyecto en **Godot 4.4** (GDScript, renderer GL Compatibility).
 
 | Acción | Control |
 |---|---|
-| Mover / correr / saltar | WASD (o flechas) / Shift / Espacio |
-| Mirar | Ratón (clic para capturarlo, Esc para soltarlo) |
+| Mover / correr / saltar | A D o ← → / Shift / Espacio |
+| Profundidad (solo en las zonas del camino) | W S o ↑ ↓ |
 | Red | F o clic izquierdo |
 | Hablar | E |
 
@@ -34,13 +36,13 @@ godot --headless --path . -s tests/smoke_test.gd
 
 ```
 scenes/main.tscn          escena raíz (solo carga island.gd)
-scripts/island.gd         construye la isla, el clima y la grieta
-scripts/player.gd         Canelita: movimiento, cámara, red, interacción
+scripts/island.gd         construye la isla, zonas de profundidad, clima y grieta
+scripts/player.gd         Canelita: movimiento por carril, cámara lateral, red, interacción
 scripts/villager.gd       aldeanos y diálogo
 scripts/butterfly.gd      mariposas
 scripts/hud.gd            interfaz y cuadro de diálogo
 scripts/story.gd          autoload: fases de la historia, campanas, mariposas
-scripts/character_model.gd  modelos placeholder con primitivas
+scripts/character_model.gd  modelos placeholder y shader toon con mundo curvado
 tests/smoke_test.gd       prueba de humo headless
 docs/DESIGN.md            visión y hoja de ruta
 ```

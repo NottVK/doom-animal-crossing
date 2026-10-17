@@ -26,7 +26,7 @@ func run() -> void:
 	await physics_frame
 
 	var butterflies := get_nodes_in_group("butterfly")
-	_check(butterflies.size() == 10, "hay 10 mariposas (%d)" % butterflies.size())
+	_check(butterflies.size() == 16, "hay 16 mariposas (%d)" % butterflies.size())
 
 	var player: Player = null
 	for n in main.get_children():
@@ -34,9 +34,21 @@ func run() -> void:
 			player = n
 	_check(player != null, "existe el jugador")
 
+	# Carril: fuera de las zonas no hay profundidad; en la plaza sí.
+	player.global_position = Vector3(-14, 0.5, -4.0)
+	await physics_frame
+	await physics_frame
+	_check(player.global_position.z >= -0.71, "fuera de zona la z se limita al carril (%.2f)" % player.global_position.z)
+	player.global_position = Vector3(0, 0.5, -4.0)
+	await physics_frame
+	await physics_frame
+	_check(player.global_position.z < -3.5, "en la plaza se puede ir al fondo (%.2f)" % player.global_position.z)
+	player.global_position = Vector3(-14, 0.5, 0.0)
+	await physics_frame
+
 	# Coloca una mariposa frente a la red y balancéala.
 	var b := butterflies[0] as Node3D
-	b.global_position = player.global_position + Vector3(0, 1.0, -1.5)
+	b.global_position = player.global_position + Vector3(1.5, 1.0, 0)
 	await physics_frame
 	await physics_frame
 	await physics_frame

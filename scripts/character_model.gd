@@ -1,13 +1,69 @@
 class_name CharacterModel
 extends RefCounted
-## Genera animalitos redondos con primitivas (placeholder hasta tener modelos de Blender).
+## Genera animalitos redondos con primitivas (placeholder hasta tener modelos de Blender)
+## y el material "toon" del juego: luz suave en bandas, borde de luz y mundo curvado.
 ## El frente del modelo apunta a -Z.
 
-static func mat(color: Color) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = color
-	m.roughness = 1.0
-	m.metallic_specular = 0.0
+## Shader del look Animal Crossing. El mundo se curva hacia abajo con la distancia a la
+## cámara (la posición viene del global `curve_cam_pos`, así también cuadran las sombras).
+const SHADER_SRC := """
+shader_type spatial;
+render_mode %MODES%;
+
+global uniform vec3 curve_cam_pos;
+
+uniform vec4 albedo : source_color = vec4(1.0);
+uniform bool use_vertex_color = false;
+uniform vec3 emission_color : source_color = vec3(0.0);
+uniform float emission_energy = 0.0;
+uniform float curve_depth = 0.0025;
+uniform float curve_side = 0.0007;
+uniform float focus_dist = 12.0;
+
+void vertex() {
+	vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	float dz = max(0.0, (curve_cam_pos.z - world.z) - focus_dist);
+	float dx = world.x - curve_cam_pos.x;
+	world.y -= dz * dz * curve_depth + dx * dx * curve_side;
+	VERTEX = (inverse(MODEL_MATRIX) * vec4(world, 1.0)).xyz;
+}
+
+void fragment() {
+	vec4 c = albedo;
+	if (use_vertex_color) {
+		c *= COLOR;
+	}
+	ALBEDO = c.rgb;
+	%ALPHA%
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
+	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+	EMISSION = emission_color * emission_energy + c.rgb * rim * 0.12;
+}
+"""
+
+static var _shaders := {}
+
+
+static func mat(color: Color, alpha := false, double_sided := false) -> ShaderMaterial:
+	var key := "%s_%s" % [alpha, double_sided]
+	if not _shaders.has(key):
+		var s := Shader.new()
+		s.code = SHADER_SRC \
+				.replace("%MODES%", "cull_disabled" if double_sided else "cull_back") \
+				.replace("%ALPHA%", "ALPHA = c.a;" if alpha else "")
+		_shaders[key] = s
+	var m := ShaderMaterial.new()
+	m.shader = _shaders[key]
+	m.set_shader_parameter("albedo", color)
+	return m
+
+
+## Material que brilla (grieta, brasas).
+static func glow_mat(base: Color, glow: Color, energy: float) -> ShaderMaterial:
+	var m := mat(base)
+	m.set_shader_parameter("emission_color", glow)
+	m.set_shader_parameter("emission_energy", energy)
 	return m
 
 

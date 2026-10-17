@@ -1,19 +1,21 @@
 class_name Player
 extends CharacterBody3D
-## Canelita: personaje en tercera persona con red de atrapar mariposas.
+## Canelita en vista lateral 2.5D: se camina de lado por un carril y solo se puede ir
+## al fondo/frente dentro de las zonas de profundidad (`lane_limits`).
 
 signal target_changed(target: Node3D)
 
-@export var walk_speed := 5.0
-@export var run_speed := 8.5
+@export var walk_speed := 4.5
+@export var run_speed := 7.5
 @export var jump_velocity := 6.5
-@export var mouse_sensitivity := 0.003
+@export var x_limit := 38.0
+@export var camera_x_limit := 30.0
 
 var can_move := true
+## Callable(x: float) -> Vector2(z_min, z_max) con el rango de profundidad permitido en esa x.
+var lane_limits := Callable()
 
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-var _pivot: Node3D
-var _spring: SpringArm3D
 var _camera: Camera3D
 var _model: Node3D
 var _arm_r: Node3D
@@ -42,6 +44,7 @@ func _ready() -> void:
 	add_child(shape)
 
 	_model = CharacterModel.build("dog", Color(0.98, 0.82, 0.3), Color(0.55, 0.78, 0.4))
+	_model.rotation.y = -PI / 2.0   # mira a la derecha
 	add_child(_model)
 	_arm_r = _model.get_node("ArmR")
 	_attach_net(_arm_r)
@@ -68,20 +71,14 @@ func _ready() -> void:
 	_interact_area.add_child(int_shape)
 	add_child(_interact_area)
 
-	_pivot = Node3D.new()
-	_pivot.position.y = 1.4
-	add_child(_pivot)
-	_spring = SpringArm3D.new()
-	_spring.spring_length = 5.5
-	_spring.rotation.x = -0.35
-	_spring.collision_mask = 1
-	_spring.margin = 0.2
-	_spring.add_excluded_object(get_rid())
-	_pivot.add_child(_spring)
 	_camera = Camera3D.new()
-	_camera.fov = 70.0
-	_spring.add_child(_camera)
+	_camera.top_level = true
+	_camera.fov = 38.0
+	add_child(_camera)
+	_camera.rotation_degrees = Vector3(-11.0, 0.0, 0.0)
+	_camera.global_position = _camera_target()
 	_camera.make_current()
+	_publish_camera()
 
 
 func _attach_net(arm: Node3D) -> void:
@@ -92,26 +89,13 @@ func _attach_net(arm: Node3D) -> void:
 	hoop.outer_radius = 0.25
 	CharacterModel.add_mesh(arm, hoop, Color(0.85, 0.3, 0.3), Vector3(0, -0.45, -1.55),
 			Vector3.ONE, Vector3(90, 0, 0))
-	var bag := CharacterModel.add_mesh(arm, CharacterModel.sphere(0.22), Color(1, 1, 1),
+	var bag := CharacterModel.add_mesh(arm, CharacterModel.sphere(0.22), Color.WHITE,
 			Vector3(0, -0.45, -1.55), Vector3(1, 1, 0.5))
-	var bag_mat := bag.material_override as StandardMaterial3D
-	bag_mat.albedo_color.a = 0.45
-	bag_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bag.material_override = CharacterModel.mat(Color(1, 1, 1, 0.45), true)
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel"):
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		return
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		_pivot.rotate_y(-event.relative.x * mouse_sensitivity)
-		_spring.rotation.x = clampf(_spring.rotation.x - event.relative.y * mouse_sensitivity, -1.2, 0.2)
-		return
 	if event.is_action_pressed("net"):
-		if event is InputEventMouseButton and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-			get_viewport().set_input_as_handled()
-			return
 		swing_net()
 	elif event.is_action_pressed("interact") and _target and can_move:
 		_target.call("interact", self)
@@ -140,8 +124,7 @@ func _physics_process(delta: float) -> void:
 	var dir := Vector3.ZERO
 	if can_move:
 		var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
-		dir = _pivot.global_basis * Vector3(input.x, 0.0, input.y)
-		dir.y = 0.0
+		dir = Vector3(input.x, 0.0, input.y)
 		if Input.is_action_just_pressed("jump") and is_on_floor():
 			velocity.y = jump_velocity
 
@@ -150,17 +133,37 @@ func _physics_process(delta: float) -> void:
 	velocity.z = move_toward(velocity.z, dir.z * speed, speed * 10.0 * delta)
 	move_and_slide()
 
-	if dir.length() > 0.1:
-		_model.rotation.y = lerp_angle(_model.rotation.y, atan2(-dir.x, -dir.z), delta * 12.0)
+	# Carril: la profundidad solo existe dentro de las zonas definidas por el mundo.
+	var p := global_position
+	p.x = clampf(p.x, -x_limit, x_limit)
+	if lane_limits.is_valid():
+		var r: Vector2 = lane_limits.call(p.x)
+		if p.z < r.x or p.z > r.y:
+			p.z = clampf(p.z, r.x, r.y)
+			velocity.z = 0.0
+	global_position = p
+
+	var flat := Vector2(velocity.x, velocity.z)
+	if flat.length() > 0.5:
+		_model.rotation.y = lerp_angle(_model.rotation.y, atan2(-flat.x, -flat.y), delta * 12.0)
 
 	if global_position.y < -4.0:
-		global_position = Vector3(0, 1.0, 3.0)
+		global_position = Vector3(0, 1.0, 0.0)
 		velocity = Vector3.ZERO
 
 	var target := _closest_interactable()
 	if target != _target:
 		_target = target
 		target_changed.emit(_target)
+
+
+func _camera_target() -> Vector3:
+	return Vector3(clampf(global_position.x, -camera_x_limit, camera_x_limit),
+			global_position.y * 0.5 + 3.4, global_position.z * 0.5 + 11.5)
+
+
+func _publish_camera() -> void:
+	RenderingServer.global_shader_parameter_set("curve_cam_pos", _camera.global_position)
 
 
 func _process(delta: float) -> void:
@@ -171,14 +174,15 @@ func _process(delta: float) -> void:
 	_model.position.y = absf(sin(_anim_t * 10.0)) * 0.06 * move if is_on_floor() else 0.0
 
 	# Brazo derecho: reposo con la red en alto, y golpe hacia abajo al balancear.
-	var rest := 0.6
 	if _swing_t > 0.0:
 		_swing_t = maxf(0.0, _swing_t - delta)
 		var k := 1.0 - _swing_t / SWING_TIME
 		_arm_r.rotation.x = lerpf(2.3, 0.2, ease(k, 0.4))
 	else:
-		_arm_r.rotation.x = lerpf(_arm_r.rotation.x, rest, delta * 10.0)
+		_arm_r.rotation.x = lerpf(_arm_r.rotation.x, 0.6, delta * 10.0)
 
+	_camera.global_position = _camera.global_position.lerp(_camera_target(), 1.0 - exp(-6.0 * delta))
+	_publish_camera()
 	if _shake_t > 0.0:
 		_shake_t -= delta
 		_camera.h_offset = randf_range(-1.0, 1.0) * _shake_amp

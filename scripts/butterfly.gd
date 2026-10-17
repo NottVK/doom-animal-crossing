@@ -1,10 +1,11 @@
 class_name Butterfly
 extends Area3D
-## Mariposa que revolotea por la isla. Se atrapa con la red del jugador.
+## Mariposa que revolotea por el carril de la isla. Se atrapa con la red del jugador.
 
 signal caught
 
-var limit := 34.0
+## Mitad del área por la que vuela: x = largo de la isla, y = profundidad (z).
+var half_extents := Vector2(34.0, 3.0)
 
 var _target := Vector3.ZERO
 var _has_target := false
@@ -27,7 +28,7 @@ func _ready() -> void:
 	shape.shape = s
 	add_child(shape)
 
-	var color := Color.from_hsv(randf(), 0.55, 1.0)
+	var color := Color.from_hsv(randf(), 0.5, 1.0)
 	CharacterModel.add_mesh(self, CharacterModel.capsule(0.03, 0.2), Color(0.2, 0.15, 0.15),
 			Vector3.ZERO, Vector3.ONE, Vector3(90, 0, 0))
 	_wing_l = _make_wing(-1, color)
@@ -41,8 +42,7 @@ func _make_wing(side: int, color: Color) -> Node3D:
 	quad.size = Vector2(0.32, 0.26)
 	var mi := CharacterModel.add_mesh(pivot, quad, color, Vector3(side * 0.16, 0, 0),
 			Vector3.ONE, Vector3(-90, 0, 0))
-	var m := mi.material_override as StandardMaterial3D
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = CharacterModel.mat(color, false, true)
 	return pivot
 
 
@@ -59,9 +59,8 @@ func _process(delta: float) -> void:
 
 
 func _pick_target() -> void:
-	var a := randf() * TAU
-	var r := randf_range(3.0, limit)
-	_target = Vector3(cos(a) * r, randf_range(0.9, 2.6), sin(a) * r)
+	_target = Vector3(randf_range(-half_extents.x, half_extents.x), randf_range(0.9, 2.6),
+			randf_range(-half_extents.y, half_extents.y))
 	_has_target = true
 
 
