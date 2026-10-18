@@ -14,6 +14,8 @@ global uniform vec3 curve_cam_pos;
 
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform bool use_vertex_color = false;
+// Los colores de vértice de los .glb llegan linealizados dos veces; esto lo compensa.
+uniform bool vertex_color_gamma = false;
 uniform vec3 emission_color : source_color = vec3(0.0);
 uniform float emission_energy = 0.0;
 uniform float curve_depth = 0.0025;
@@ -31,7 +33,7 @@ void vertex() {
 void fragment() {
 	vec4 c = albedo;
 	if (use_vertex_color) {
-		c *= COLOR;
+		c *= vertex_color_gamma ? vec4(pow(COLOR.rgb, vec3(1.0 / 2.2)), COLOR.a) : COLOR;
 	}
 	ALBEDO = c.rgb;
 	%ALPHA%
@@ -70,6 +72,9 @@ static func apply_toon(root: Node) -> void:
 				continue
 			var color := src.albedo_color
 			var m := mat(color, color.a < 0.99)
+			if src.vertex_color_use_as_albedo:
+				m.set_shader_parameter("use_vertex_color", true)
+				m.set_shader_parameter("vertex_color_gamma", true)
 			if src.emission_enabled:
 				m.set_shader_parameter("emission_color", src.emission)
 				m.set_shader_parameter("emission_energy", src.emission_energy_multiplier)

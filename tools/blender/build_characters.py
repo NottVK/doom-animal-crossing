@@ -29,6 +29,12 @@ class Character:
         self.arm = None
         self.head_scale = 1.0   # agranda cabeza y orejas alrededor de (0, 0, head_pivot_z)
         self.head_pivot_z = 1.58
+        # Modo orgánico: funde las piezas en una sola malla esculpida (remesh por vóxeles + suavizado),
+        # pinta los colores como color de vértice y reparte los pesos del esqueleto suavemente.
+        self.organic = False
+        self.keep_separate = set()   # piezas de detalle que no se funden (ojos, nariz, red...)
+        self.voxel = 0.014
+        self.decimate = 0.3
 
     # ---------- materiales y mallas ----------
     def mat(self, key, rgb, rough=0.85, emit=None, strength=4.0, alpha=1.0):
@@ -153,6 +159,8 @@ class Character:
                     bpy.context.view_layer.objects.active = o
                     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
                     o.data.transform(m)
+        if self.organic:
+            self._fuse_organic()
         bpy.ops.object.select_all(action="DESELECT")
         for o in self.parts:
             o.select_set(True)
@@ -164,6 +172,78 @@ class Character:
         mod.object = self.arm
         mesh.parent = self.arm
         self.mesh = mesh
+
+    def _apply_mods(self, obj):
+        bpy.ops.object.select_all(action="DESELECT")
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+        for m in list(obj.modifiers):
+            bpy.ops.object.modifier_apply(modifier=m.name)
+
+    def _fuse_organic(self):
+        fuse = [o for o in self.parts if o.name.split(".")[0] not in self.keep_separate]
+        keep = [o for o in self.parts if o not in fuse]
+        # 1) cada pieza guarda su color como atributo, y se juntan en una malla "fuente"
+        for o in fuse:
+            col = o.data.materials[0].node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value
+            attr = o.data.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
+            for d in attr.data:
+                d.color = tuple(col)
+        bpy.ops.object.select_all(action="DESELECT")
+        for o in fuse:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = fuse[0]
+        bpy.ops.object.join()
+        src = bpy.context.active_object
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+        # 2) copia remallada: una sola superficie continua, suavizada y aligerada
+        body = src.copy()
+        body.data = src.data.copy()
+        body.name = self.name + "_body"
+        bpy.context.collection.objects.link(body)
+        body.vertex_groups.clear()
+        rm = body.modifiers.new("remesh", "REMESH")
+        rm.mode = "VOXEL"
+        rm.voxel_size = self.voxel
+        sm = body.modifiers.new("smooth", "LAPLACIANSMOOTH")
+        sm.iterations = 4
+        sm.lambda_factor = 0.8
+        dec = body.modifiers.new("decimate", "DECIMATE")
+        dec.ratio = self.decimate
+        self._apply_mods(body)
+        for a in list(body.data.color_attributes):
+            body.data.color_attributes.remove(a)
+        body.data.materials.clear()
+
+        # 3) colores y pesos del esqueleto se transfieren desde la fuente (interpolados)
+        dt = body.modifiers.new("transfer", "DATA_TRANSFER")
+        dt.object = src
+        dt.use_vert_data = True
+        dt.data_types_verts = {"VGROUP_WEIGHTS", "COLOR_VERTEX"}
+        dt.vert_mapping = "POLYINTERP_NEAREST"
+        dt.layers_vgroup_select_src = "ALL"
+        dt.layers_vgroup_select_dst = "NAME"
+        dt.layers_vcol_vert_select_src = "ALL"
+        dt.layers_vcol_vert_select_dst = "NAME"
+        bpy.context.view_layer.objects.active = body
+        bpy.ops.object.datalayout_transfer(modifier="transfer")
+        self._apply_mods(body)
+        bpy.ops.object.shade_smooth()
+        body.data.color_attributes.active_color_name = "Col"
+
+        m = bpy.data.materials.new("body")
+        m.use_nodes = True
+        nt = m.node_tree
+        bsdf = nt.nodes["Principled BSDF"]
+        vc = nt.nodes.new("ShaderNodeVertexColor")
+        vc.layer_name = "Col"
+        nt.links.new(vc.outputs["Color"], bsdf.inputs["Base Color"])
+        bsdf.inputs["Roughness"].default_value = 0.85
+        body.data.materials.append(m)
+
+        bpy.data.objects.remove(src)
+        self.parts = [body] + keep
 
     # ---------- animación ----------
     def rot(self, bone, axis, angle):
@@ -464,6 +544,12 @@ def build_brisa():
 # =====================================================================
 def build_canelita():
     c = Character("Canelita")
+    c.organic = True
+    c.voxel = 0.011
+    c.decimate = 0.5
+    c.keep_separate = {"eye", "shine", "shine2", "nose", "nose_shine", "mouth", "tongue", "brow", "blush",
+                       "button", "bib_pocket", "stripe", "sole", "leaf", "leaf2",
+                       "pole", "grip", "hoop", "net"}
     rad = math.radians
     fur = c.mat("fur", (0.82, 0.54, 0.26))
     fur_dk = c.mat("fur_dk", (0.62, 0.37, 0.16))
