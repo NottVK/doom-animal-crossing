@@ -3,9 +3,9 @@
 Uso (con el módulo bpy instalado):
     python tools/blender/build_characters.py assets/models [carpeta_de_previews]
 
-Salida: canelita.glb y centinela.glb. El frente de los modelos mira a +Y en Blender, que al
+Salida: brisa.glb y centinela.glb. El frente de los modelos mira a +Y en Blender, que al
 exportar a glTF (Y arriba) queda mirando a -Z, igual que en Godot.
-Animaciones: idle-loop, walk-loop y swing (Canelita) / attack (Centinela).
+Animaciones: idle-loop, walk-loop y swing (Brisa) / attack (Centinela).
 """
 import math
 import os
@@ -27,6 +27,8 @@ class Character:
         self.parts = []
         self.mats = {}
         self.arm = None
+        self.head_scale = 1.0   # agranda cabeza y orejas alrededor de (0, 0, head_pivot_z)
+        self.head_pivot_z = 1.58
 
     # ---------- materiales y mallas ----------
     def mat(self, key, rgb, rough=0.85, emit=None, strength=4.0, alpha=1.0):
@@ -74,17 +76,47 @@ class Character:
         bpy.ops.object.modifier_apply(modifier="bevel")
         return self._finish_part(o, material, bone, False)
 
-    def cylinder(self, name, loc, radius, depth, material, bone, rot=(0, 0, 0)):
+    def cylinder(self, name, loc, radius, depth, material, bone, rot=(0, 0, 0), scale=(1, 1, 1)):
         bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=radius, depth=depth, location=loc, rotation=rot)
         o = bpy.context.active_object
         o.name = name
+        if tuple(scale) != (1, 1, 1):
+            o.scale = scale
+            bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
         return self._finish_part(o, material, bone, True)
 
-    def cone(self, name, loc, radius, depth, material, bone, rot=(0, 0, 0)):
-        bpy.ops.mesh.primitive_cone_add(vertices=16, radius1=radius, radius2=0.0, depth=depth, location=loc, rotation=rot)
+    def cone(self, name, loc, radius, depth, material, bone, rot=(0, 0, 0), r2=0.0, scale=(1, 1, 1)):
+        bpy.ops.mesh.primitive_cone_add(vertices=24, radius1=radius, radius2=r2, depth=depth, location=loc, rotation=rot)
         o = bpy.context.active_object
         o.name = name
+        if tuple(scale) != (1, 1, 1):
+            o.scale = scale
+            bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
         return self._finish_part(o, material, bone, True)
+
+    def limb(self, name, a, b, ra, rb, material, bone, cap=True):
+        """Segmento cónico entre dos puntos (radio ra en a, rb en b) con una esfera en el extremo b."""
+        a, b = Vector(a), Vector(b)
+        d = b - a
+        rot = d.to_track_quat("Z", "Y").to_euler()
+        bpy.ops.mesh.primitive_cone_add(vertices=24, radius1=ra, radius2=rb, depth=d.length,
+                                        location=(a + b) / 2, rotation=rot)
+        o = bpy.context.active_object
+        o.name = name
+        self._finish_part(o, material, bone, True)
+        if cap:
+            self.sphere(name + "_cap", tuple(b), (rb, rb, rb), material, bone)
+        return o
+
+    def strap(self, name, a, b, width, thick, material, bone):
+        a, b = Vector(a), Vector(b)
+        d = b - a
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(a + b) / 2, rotation=d.to_track_quat("Z", "Y").to_euler())
+        o = bpy.context.active_object
+        o.name = name
+        o.scale = (width, thick, d.length)
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        return self._finish_part(o, material, bone, False)
 
     def torus(self, name, loc, major, minor, material, bone, rot=(0, 0, 0)):
         bpy.ops.mesh.primitive_torus_add(major_segments=32, minor_segments=12, major_radius=major,
@@ -111,6 +143,16 @@ class Character:
         bpy.ops.object.mode_set(mode="OBJECT")
 
     def finish_mesh(self):
+        if self.head_scale != 1.0:
+            pivot = Vector((0, 0, self.head_pivot_z))
+            m = Matrix.Translation(pivot) @ Matrix.Scale(self.head_scale, 4) @ Matrix.Translation(-pivot)
+            for o in self.parts:
+                if o.vertex_groups[0].name in ("head", "ear_L", "ear_R"):
+                    bpy.ops.object.select_all(action="DESELECT")
+                    o.select_set(True)
+                    bpy.context.view_layer.objects.active = o
+                    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+                    o.data.transform(m)
         bpy.ops.object.select_all(action="DESELECT")
         for o in self.parts:
             o.select_set(True)
@@ -192,8 +234,8 @@ class Character:
         sc.collection.objects.link(sun)
         cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
         cam.data.lens = 60
-        cam.location = (2.6, 5.4, 1.9)
-        cam.rotation_euler = (Vector((0, 0, 1.0)) - cam.location).to_track_quat("-Z", "Y").to_euler()
+        cam.location = (2.8, 5.6, 1.9)
+        cam.rotation_euler = (Vector((0, 0, 0.95)) - cam.location).to_track_quat("-Z", "Y").to_euler()
         sc.collection.objects.link(cam)
         sc.camera = cam
         sc.render.engine = "CYCLES"
@@ -210,144 +252,207 @@ def mirror(v, s):
 
 
 # =====================================================================
-# Canelita: perrita isleña (inspirada en el estilo, diseño propio)
+# Brisa: zorra exploradora (diseño original, proporciones más realistas)
 # =====================================================================
-def build_canelita():
-    c = Character("Canelita")
-    fur = c.mat("fur", (0.98, 0.80, 0.28))
-    fur_dark = c.mat("fur_dark", (0.90, 0.68, 0.20))
-    cream = c.mat("cream", (1.0, 0.93, 0.72))
-    vest = c.mat("vest", (0.42, 0.72, 0.40))
-    dark = c.mat("dark", (0.10, 0.07, 0.07), rough=0.4)
-    white = c.mat("white", (1, 1, 1), rough=0.3)
-    pink = c.mat("pink", (1.0, 0.55, 0.62))
-    shoe = c.mat("shoe", (0.55, 0.36, 0.22))
+def build_brisa():
+    c = Character("Brisa")
+    c.head_scale = 1.3
+    rad = math.radians
+    fur = c.mat("fur", (0.88, 0.42, 0.13))
+    fur_dk = c.mat("fur_dk", (0.50, 0.22, 0.07))
+    cream = c.mat("cream", (0.98, 0.93, 0.82))
+    sock = c.mat("sock", (0.16, 0.10, 0.08))
+    jacket = c.mat("jacket", (0.14, 0.46, 0.40))
+    jacket_dk = c.mat("jacket_dk", (0.09, 0.30, 0.27))
+    shirt = c.mat("shirt", (0.92, 0.87, 0.74))
+    mustard = c.mat("mustard", (0.92, 0.70, 0.20))
+    leather = c.mat("leather", (0.38, 0.23, 0.13), rough=0.7)
+    trouser = c.mat("trouser", (0.33, 0.27, 0.22))
+    brass = c.mat("brass", (0.85, 0.65, 0.25), rough=0.3)
+    eye_w = c.mat("eye_w", (1, 1, 1), rough=0.2)
+    iris = c.mat("iris", (0.95, 0.62, 0.12), rough=0.25)
+    dark = c.mat("dark", (0.05, 0.04, 0.04), rough=0.3)
+    lens = c.mat("lens", (0.6, 0.85, 0.95), rough=0.1, alpha=0.5)
     wood = c.mat("wood", (0.62, 0.44, 0.28))
-    ring = c.mat("ring", (0.9, 0.28, 0.28))
+    ring = c.mat("ring", (0.80, 0.40, 0.15), rough=0.4)
     mesh_m = c.mat("net", (1, 1, 1), alpha=0.4)
 
-    fur_light = c.mat("fur_light", (1.0, 0.90, 0.52))
-    inner_ear = c.mat("inner_ear", (1.0, 0.70, 0.66))
-    vest_dk = c.mat("vest_dk", (0.30, 0.58, 0.30))
-    gold = c.mat("gold", (0.95, 0.78, 0.25), rough=0.35)
-    sock = c.mat("sock", (1.0, 0.97, 0.9))
-    shoe_lt = c.mat("shoe_lt", (0.72, 0.50, 0.32))
-    rad = math.radians
-
-    # cuerpo y chaleco con botones, bolsillos, cuello y dobladillo
-    c.sphere("body", (0, 0, 0.82), (0.43, 0.36, 0.46), fur, "hips")
-    c.sphere("vest", (0, 0.12, 0.84), (0.39, 0.29, 0.40), vest, "chest")
-    c.sphere("vest_collar", (0, 0.10, 1.12), (0.31, 0.21, 0.07), vest_dk, "chest")
-    c.sphere("vest_hem", (0, 0.10, 0.53), (0.36, 0.26, 0.05), vest_dk, "hips")
-    for z in (0.98, 0.84, 0.70):
-        c.sphere("button", (0, 0.40, z), (0.036, 0.022, 0.036), gold, "chest")
+    # torso: pelvis, abdomen, pecho con abrigo, hombros, faldón, cremallera
+    c.sphere("pelvis", (0, 0, 0.97), (0.185, 0.125, 0.125), trouser, "hips")
+    c.sphere("abdomen", (0, 0, 1.10), (0.15, 0.105, 0.12), shirt, "hips")
+    c.sphere("chest", (0, 0, 1.29), (0.185, 0.125, 0.17), jacket, "chest")
+    c.sphere("shoulders", (0, 0, 1.44), (0.25, 0.10, 0.07), jacket, "chest")
+    c.cone("skirt", (0, 0, 1.02), 0.21, 0.30, jacket, "hips", r2=0.17, scale=(1, 0.75, 1))
+    c.box("zipper", (0, 0.127, 1.20), (0.012, 0.012, 0.44), brass, "chest", bevel=0.003)
+    c.cylinder("belt", (0, 0, 1.03), 0.205, 0.05, leather, "hips", scale=(1, 0.75, 1))
+    c.box("buckle", (0, 0.157, 1.03), (0.05, 0.012, 0.045), brass, "hips", bevel=0.004)
     for sd in (-1, 1):
-        c.sphere("pocket", (sd * 0.17, 0.35, 0.64), (0.10, 0.03, 0.08), vest_dk, "chest")
-    c.sphere("tail", (0, -0.45, 0.70), (0.10, 0.17, 0.10), fur, "tail")
-    c.sphere("tail_tip", (0, -0.59, 0.73), (0.08, 0.09, 0.08), fur_light, "tail")
+        c.box("pouch", (sd * 0.19, 0.05, 0.95), (0.07, 0.07, 0.10), leather, "hips", bevel=0.015)
+    # cuello, cuello del abrigo, capucha, bufanda con extremo suelto
+    c.limb("neck", (0, 0, 1.50), (0, 0, 1.62), 0.05, 0.045, fur, "neck", cap=False)
+    c.torus("collar", (0, 0, 1.51), 0.078, 0.032, jacket_dk, "neck")
+    c.sphere("hood", (0, -0.10, 1.49), (0.12, 0.07, 0.07), jacket_dk, "chest")
+    c.torus("scarf", (0, 0.005, 1.55), 0.088, 0.028, mustard, "neck")
+    c.box("scarf_tail", (-0.07, 0.105, 1.40), (0.075, 0.022, 0.30), mustard, "scarf_end", bevel=0.006)
+    c.box("scarf_tail2", (-0.07, 0.105, 1.24), (0.075, 0.022, 0.03), brass, "scarf_end", bevel=0.004)
+    # morral y correa cruzada
+    c.strap("strap", (0.17, 0.0, 1.43), (-0.23, 0.0, 0.97), 0.035, 0.014, leather, "chest")
+    c.box("satchel", (-0.25, 0.0, 0.90), (0.075, 0.16, 0.14), leather, "hips", bevel=0.015)
+    c.box("flap", (-0.25, 0.0, 0.965), (0.08, 0.17, 0.045), jacket_dk, "hips", bevel=0.008)
+    c.box("satchel_clasp", (-0.292, 0.0, 0.93), (0.01, 0.04, 0.03), brass, "hips", bevel=0.004)
 
-    # cabeza: mejillas esponjosas, cejas, boca, flequillo y moño con liga
-    c.sphere("head", (0, 0, 1.42), (0.47, 0.42, 0.41), fur, "head")
-    c.sphere("muzzle", (0, 0.33, 1.33), (0.21, 0.18, 0.15), cream, "head")
-    c.sphere("nose", (0, 0.49, 1.38), (0.065, 0.05, 0.05), dark, "head")
-    c.sphere("nose_shine", (0.015, 0.525, 1.395), (0.018, 0.012, 0.012), white, "head")
-    c.sphere("mouth", (0, 0.50, 1.295), (0.075, 0.02, 0.012), dark, "head")
-    c.sphere("tongue", (0, 0.485, 1.27), (0.04, 0.03, 0.022), pink, "head")
-    for x in (-0.07, 0.0, 0.07):
-        c.cone("bang", (x, 0.15, 1.79), 0.05, 0.17, fur, "head", rot=(rad(-55), 0, rad(-x * 220)))
-    c.torus("hair_band", (0, -0.03, 1.80), 0.10, 0.026, vest, "head")
-    c.sphere("topknot", (0, -0.03, 1.91), (0.12, 0.12, 0.12), fur, "head")
-    c.cone("knot_tip", (0, -0.03, 2.0), 0.05, 0.13, fur, "head")
+    # cabeza de zorra: cráneo, hocico alargado, mejillas con pelaje, ojos con iris, orejas
+    c.sphere("head", (0, 0, 1.69), (0.115, 0.12, 0.11), fur, "head")
+    c.sphere("muzzle", (0, 0.135, 1.655), (0.052, 0.095, 0.045), fur, "head")
+    c.sphere("jaw", (0, 0.12, 1.625), (0.045, 0.085, 0.028), cream, "head")
+    c.sphere("nose", (0, 0.228, 1.665), (0.019, 0.017, 0.015), dark, "head")
+    c.sphere("mouth", (0, 0.195, 1.64), (0.032, 0.04, 0.004), dark, "head")
     for sd in (-1, 1):
         side = "L" if sd < 0 else "R"
-        c.sphere("cheek", (sd * 0.38, 0.12, 1.33), (0.14, 0.12, 0.12), fur, "head")
-        c.sphere("eye", (sd * 0.17, 0.37, 1.49), (0.068, 0.042, 0.095), dark, "head")
-        c.sphere("shine", (sd * 0.155, 0.405, 1.525), (0.025, 0.02, 0.025), white, "head")
-        c.sphere("shine2", (sd * 0.185, 0.405, 1.46), (0.012, 0.01, 0.012), white, "head")
-        c.sphere("brow", (sd * 0.17, 0.35, 1.60), (0.075, 0.025, 0.02), fur_dark, "head", rot=(0, 0, rad(sd * 14)))
-        c.sphere("blush", (sd * 0.30, 0.29, 1.39), (0.075, 0.02, 0.05), pink, "head")
-        c.sphere("ear", (sd * 0.50, 0.0, 1.36), (0.10, 0.16, 0.25), fur_dark, "ear_" + side,
-                 rot=(0, rad(-sd * 12), 0))
-        c.sphere("ear_in", (sd * 0.49, 0.10, 1.37), (0.05, 0.07, 0.18), inner_ear, "ear_" + side,
-                 rot=(0, rad(-sd * 12), 0))
-        # brazos con manos, pulgar y nudillos
-        c.sphere("arm", (sd * 0.46, 0, 0.88), (0.10, 0.10, 0.25), fur, "arm_" + side)
-        c.sphere("hand", (sd * 0.46, 0.04, 0.60), (0.105, 0.105, 0.105), cream, "hand_" + side)
-        c.sphere("thumb", (sd * 0.53, 0.08, 0.62), (0.04, 0.05, 0.055), cream, "hand_" + side)
-        for i in (-1, 0, 1):
-            c.sphere("knuckle", (sd * 0.46 + i * 0.045, 0.125, 0.575), (0.036, 0.036, 0.036), cream, "hand_" + side)
-        # piernas con calcetín y zapato con suela y puntera
-        c.sphere("leg", (sd * 0.18, 0, 0.27), (0.12, 0.12, 0.21), fur_dark, "leg_" + side)
-        c.sphere("sock", (sd * 0.18, 0, 0.17), (0.128, 0.128, 0.07), sock, "leg_" + side)
-        c.sphere("shoe", (sd * 0.18, 0.06, 0.085), (0.14, 0.21, 0.085), shoe, "leg_" + side)
-        c.sphere("toe", (sd * 0.18, 0.21, 0.085), (0.105, 0.09, 0.065), shoe_lt, "leg_" + side)
-        c.sphere("sole", (sd * 0.18, 0.07, 0.03), (0.145, 0.23, 0.035), dark, "leg_" + side)
+        th = math.atan2(sd * 0.8, -0.5)
+        c.cone("cheek_fur", (sd * 0.105, 0.03, 1.65), 0.05, 0.14, cream, "head", rot=(0, th, 0))
+        c.sphere("cheek", (sd * 0.07, 0.10, 1.64), (0.04, 0.05, 0.04), cream, "head")
+        c.sphere("eye", (sd * 0.052, 0.108, 1.70), (0.024, 0.014, 0.017), eye_w, "head")
+        c.sphere("iris", (sd * 0.052, 0.118, 1.70), (0.016, 0.008, 0.016), iris, "head")
+        c.sphere("pupil", (sd * 0.052, 0.122, 1.70), (0.008, 0.005, 0.012), dark, "head")
+        c.sphere("shine", (sd * 0.047, 0.126, 1.707), (0.004, 0.003, 0.004), eye_w, "head")
+        c.sphere("lid", (sd * 0.052, 0.109, 1.714), (0.026, 0.015, 0.007), fur_dk, "head")
+        c.sphere("brow", (sd * 0.056, 0.105, 1.737), (0.030, 0.010, 0.008), fur_dk, "head", rot=(0, 0, rad(-sd * 15)))
+        tilt = rad(sd * 14)
+        c.cone("ear", (sd * 0.075, -0.01, 1.82), 0.062, 0.20, fur, "ear_" + side, rot=(0, tilt, 0))
+        c.cone("ear_in", (sd * 0.075, 0.012, 1.815), 0.036, 0.15, cream, "ear_" + side, rot=(0, tilt, 0))
+        c.cone("ear_tip", (sd * (0.075 + 0.095 * math.sin(tilt)), -0.01, 1.82 + 0.095 * math.cos(tilt)),
+               0.022, 0.07, sock, "ear_" + side, rot=(0, tilt, 0))
+        # gafas sobre la frente
+        c.cylinder("goggle", (sd * 0.045, 0.116, 1.765), 0.032, 0.022, brass, "head", rot=(rad(90), 0, 0))
+        c.cylinder("lens", (sd * 0.045, 0.1275, 1.765), 0.025, 0.012, lens, "head", rot=(rad(90), 0, 0))
+    c.torus("headband", (0, -0.005, 1.755), 0.12, 0.009, leather, "head")
+    c.box("goggle_bridge", (0, 0.118, 1.765), (0.03, 0.012, 0.012), leather, "head", bevel=0.003)
+
+    # cola frondosa con punta clara (dos huesos)
+    c.limb("tail_a", (0, -0.10, 0.97), (0, -0.28, 1.00), 0.045, 0.075, fur, "tail1")
+    c.limb("tail_b", (0, -0.28, 1.00), (0, -0.52, 1.05), 0.085, 0.07, fur, "tail2")
+    c.sphere("tail_fluff", (0, -0.42, 1.03), (0.095, 0.17, 0.095), fur, "tail2")
+    c.sphere("tail_tip", (0, -0.62, 1.07), (0.065, 0.11, 0.065), cream, "tail2")
+
+    for sd in (-1, 1):
+        S = "L" if sd < 0 else "R"
+        x = sd * 0.10
+        # piernas: pantalón, rodilla, bota alta con cordones, suela y puntera
+        c.limb("thigh", (x, 0, 0.93), (x, 0.0, 0.50), 0.095, 0.075, trouser, "thigh_" + S)
+        c.sphere("knee", (x, 0.01, 0.49), (0.075, 0.075, 0.075), trouser, "thigh_" + S)
+        c.limb("boot_shaft", (x, 0, 0.46), (x, 0, 0.10), 0.074, 0.058, leather, "shin_" + S)
+        c.torus("boot_cuff", (x, 0, 0.455), 0.077, 0.016, jacket_dk, "shin_" + S)
+        for i in range(3):
+            c.box("lace", (x, 0.068, 0.37 - i * 0.07), (0.07, 0.012, 0.014), cream, "shin_" + S, bevel=0.002)
+        c.sphere("foot", (x, 0.07, 0.065), (0.065, 0.14, 0.055), leather, "foot_" + S)
+        c.sphere("toe", (x, 0.16, 0.05), (0.055, 0.07, 0.045), leather, "foot_" + S)
+        c.sphere("sole", (x, 0.08, 0.02), (0.07, 0.16, 0.02), dark, "foot_" + S)
+        # brazos: manga, codo, antebrazo con pelaje, puño del abrigo, mano enguantada con dedos
+        sh, el, wr = (sd * 0.21, 0, 1.42), (sd * 0.25, 0, 1.15), (sd * 0.26, 0.03, 0.90)
+        c.sphere("shoulder_cap", sh, (0.075, 0.075, 0.075), jacket, "upper_arm_" + S)
+        c.limb("sleeve", sh, el, 0.066, 0.056, jacket, "upper_arm_" + S)
+        c.limb("forearm", el, wr, 0.05, 0.04, fur, "forearm_" + S)
+        c.limb("cuff", (sd * 0.252, 0.005, 1.10), (sd * 0.256, 0.01, 1.02), 0.058, 0.056, jacket_dk, "forearm_" + S, cap=False)
+        c.sphere("palm", (sd * 0.26, 0.06, 0.84), (0.042, 0.03, 0.055), sock, "hand_" + S)
+        for i in range(4):
+            fx = sd * 0.26 + (i - 1.5) * 0.016
+            c.limb("finger", (fx, 0.07, 0.80), (fx, 0.095, 0.745), 0.012, 0.010, sock, "hand_" + S)
+        tx = sd * 0.26 - sd * 0.04
+        c.limb("thumb", (tx, 0.05, 0.85), (tx - sd * 0.01, 0.09, 0.80), 0.014, 0.011, sock, "hand_" + S)
 
     # red de atrapar mariposas (parte de la mano derecha)
-    c.cylinder("pole", (0.46, 0.75, 0.62), 0.028, 1.5, wood, "hand_R", rot=(rad(90), 0, 0))
-    c.cylinder("grip", (0.46, 0.10, 0.62), 0.036, 0.22, ring, "hand_R", rot=(rad(90), 0, 0))
-    c.torus("hoop", (0.46, 1.62, 0.62), 0.24, 0.025, ring, "hand_R", rot=(0, rad(90), 0))
-    c.sphere("net", (0.46, 1.62, 0.62), (0.015, 0.22, 0.22), mesh_m, "hand_R")
+    hx, hz = 0.26, 0.84
+    c.cylinder("pole", (hx, 0.75, hz), 0.014, 1.5, wood, "hand_R", rot=(rad(90), 0, 0))
+    c.cylinder("grip", (hx, 0.10, hz), 0.022, 0.20, leather, "hand_R", rot=(rad(90), 0, 0))
+    c.torus("hoop", (hx, 1.62, hz), 0.22, 0.014, ring, "hand_R", rot=(0, rad(90), 0))
+    c.sphere("net", (hx, 1.62, hz), (0.008, 0.20, 0.20), mesh_m, "hand_R")
 
     bones = [
-        ("root", (0, 0, 0), (0, 0, 0.15), None),
-        ("hips", (0, 0, 0.5), (0, 0, 0.8), "root"),
-        ("chest", (0, 0, 0.8), (0, 0, 1.15), "hips"),
-        ("head", (0, 0, 1.15), (0, 0, 1.8), "chest"),
-        ("ear_L", (-0.40, 0, 1.55), (-0.52, 0, 1.2), "head"),
-        ("ear_R", (0.40, 0, 1.55), (0.52, 0, 1.2), "head"),
-        ("tail", (0, -0.38, 0.66), (0, -0.62, 0.74), "hips"),
-        ("arm_L", (-0.44, 0, 1.08), (-0.46, 0, 0.68), "chest"),
-        ("arm_R", (0.44, 0, 1.08), (0.46, 0, 0.68), "chest"),
-        ("hand_L", (-0.46, 0, 0.68), (-0.46, 0.05, 0.52), "arm_L"),
-        ("hand_R", (0.46, 0, 0.68), (0.46, 0.05, 0.52), "arm_R"),
-        ("leg_L", (-0.18, 0, 0.5), (-0.18, 0, 0.06), "hips"),
-        ("leg_R", (0.18, 0, 0.5), (0.18, 0, 0.06), "hips"),
+        ("root", (0, 0, 0), (0, 0, 0.1), None),
+        ("hips", (0, 0, 0.95), (0, 0, 1.1), "root"),
+        ("chest", (0, 0, 1.1), (0, 0, 1.42), "hips"),
+        ("neck", (0, 0, 1.42), (0, 0, 1.58), "chest"),
+        ("head", (0, 0, 1.58), (0, 0, 1.85), "neck"),
+        ("ear_L", (-0.07, 0, 1.80), (-0.11, 0, 1.98), "head"),
+        ("ear_R", (0.07, 0, 1.80), (0.11, 0, 1.98), "head"),
+        ("tail1", (0, -0.10, 0.95), (0, -0.28, 1.0), "hips"),
+        ("tail2", (0, -0.28, 1.0), (0, -0.62, 1.07), "tail1"),
+        ("scarf_end", (-0.07, 0.10, 1.50), (-0.07, 0.11, 1.12), "chest"),
+        ("upper_arm_L", (-0.21, 0, 1.43), (-0.25, 0, 1.15), "chest"),
+        ("upper_arm_R", (0.21, 0, 1.43), (0.25, 0, 1.15), "chest"),
+        ("forearm_L", (-0.25, 0, 1.15), (-0.26, 0.03, 0.90), "upper_arm_L"),
+        ("forearm_R", (0.25, 0, 1.15), (0.26, 0.03, 0.90), "upper_arm_R"),
+        ("hand_L", (-0.26, 0.03, 0.90), (-0.26, 0.09, 0.76), "forearm_L"),
+        ("hand_R", (0.26, 0.03, 0.90), (0.26, 0.09, 0.76), "forearm_R"),
+        ("thigh_L", (-0.1, 0, 0.95), (-0.1, 0, 0.50), "hips"),
+        ("thigh_R", (0.1, 0, 0.95), (0.1, 0, 0.50), "hips"),
+        ("shin_L", (-0.1, 0, 0.50), (-0.1, 0, 0.10), "thigh_L"),
+        ("shin_R", (0.1, 0, 0.50), (0.1, 0, 0.10), "thigh_R"),
+        ("foot_L", (-0.1, 0, 0.10), (-0.1, 0.16, 0.03), "shin_L"),
+        ("foot_R", (0.1, 0, 0.10), (0.1, 0.16, 0.03), "shin_R"),
     ]
     c.make_armature(bones)
     c.finish_mesh()
     c.preview("rest")
 
     X, Z = "X", "Z"
-    hold = 0.2   # el brazo derecho sostiene la red hacia adelante
+    hold = (0.05, 0.25)   # brazo derecho: sostiene la red hacia adelante
 
-    # idle: respira, mueve orejas y cola
+    # idle: respira, parpadeo de orejas, cola y bufanda al viento
     c.begin("idle-loop")
     for f in range(1, 62, 6):
         t = (f - 1) / 60.0 * math.tau
-        c.key("chest", f, X, 0.03 * math.sin(t))
-        c.key("head", f, X, 0.04 * math.sin(t + 0.6))
-        c.key("ear_L", f, X, 0.10 * math.sin(t + 1.0))
-        c.key("ear_R", f, X, 0.10 * math.sin(t + 1.0))
-        c.key("tail", f, Z, 0.5 * math.sin(2 * t))
-        c.key("arm_R", f, X, hold + 0.04 * math.sin(t))
-        c.key("arm_L", f, X, 0.05 * math.sin(t))
+        c.key("chest", f, X, 0.025 * math.sin(t))
+        c.key("head", f, X, 0.03 * math.sin(t + 0.6))
+        c.key("ear_L", f, X, 0.10 * max(0.0, math.sin(2 * t)))
+        c.key("ear_R", f, X, 0.08 * max(0.0, math.sin(2 * t + 1.5)))
+        c.key("tail1", f, Z, 0.15 * math.sin(t))
+        c.key("tail2", f, Z, 0.25 * math.sin(t + 0.8))
+        c.key("scarf_end", f, X, 0.10 * math.sin(t + 1.0))
+        c.key("upper_arm_L", f, X, 0.04 * math.sin(t))
+        c.key("upper_arm_R", f, X, hold[0] + 0.03 * math.sin(t))
+        c.key("forearm_R", f, X, hold[1])
+        c.key("forearm_L", f, X, 0.15)
     c.end(61)
 
-    # walk: piernas y brazos alternados, rebote del cuerpo
+    # walk: zancada con flexión de rodilla, balanceo de cadera y cola
     c.begin("walk-loop")
     for f in range(1, 26, 2):
         t = (f - 1) / 24.0 * math.tau
-        s = math.sin(t)
-        c.key("leg_L", f, X, 0.75 * s)
-        c.key("leg_R", f, X, -0.75 * s)
-        c.key("arm_L", f, X, -0.55 * s)
-        c.key("arm_R", f, X, hold + 0.20 * s)
-        c.key("hips", f, loc=(0, 0, abs(math.sin(t)) * 0.05))
-        c.key("chest", f, Z, 0.05 * s)
-        c.key("head", f, X, 0.05 * abs(s))
-        c.key("ear_L", f, X, 0.25 * abs(s))
-        c.key("ear_R", f, X, 0.25 * abs(s))
-        c.key("tail", f, Z, 0.7 * s)
+        s_, k_ = math.sin(t), math.cos(t)
+        c.key("thigh_L", f, X, 0.55 * s_)
+        c.key("thigh_R", f, X, -0.55 * s_)
+        c.key("shin_L", f, X, -0.9 * max(0.0, k_))
+        c.key("shin_R", f, X, -0.9 * max(0.0, -k_))
+        c.key("foot_L", f, X, 0.15 * s_)
+        c.key("foot_R", f, X, -0.15 * s_)
+        c.key("upper_arm_L", f, X, -0.45 * s_)
+        c.key("forearm_L", f, X, 0.35 - 0.15 * s_)
+        c.key("upper_arm_R", f, X, hold[0] + 0.12 * s_)
+        c.key("forearm_R", f, X, hold[1])
+        c.key("hips", f, Z, 0.07 * s_, loc=(0, 0, abs(math.sin(t)) * 0.035))
+        c.key("chest", f, Z, -0.08 * s_)
+        c.key("head", f, Z, 0.04 * s_)
+        c.key("ear_L", f, X, 0.12 * abs(s_))
+        c.key("ear_R", f, X, 0.12 * abs(s_))
+        c.key("tail1", f, Z, 0.25 * s_)
+        c.key("tail2", f, Z, 0.45 * math.sin(t - 0.7))
+        c.key("scarf_end", f, X, 0.20 * math.sin(2 * t))
     c.preview("walk", 4)
     c.end(25)
 
-    # swing: la red sube y golpea hacia adelante
+    # swing: la red sube por encima y golpea al frente con giro de torso
     c.begin("swing")
-    poses = [(1, hold), (5, 2.4), (7, 2.5), (11, 0.1), (15, 0.0), (19, hold)]
-    for f, a in poses:
-        c.key("arm_R", f, X, a)
-        c.key("chest", f, X, -0.15 if f in (5, 7) else (0.12 if f in (11, 15) else 0.0))
+    ua = [(1, hold[0]), (5, 2.4), (7, 2.5), (11, 0.0), (15, -0.1), (19, hold[0])]
+    fo = {1: hold[1], 5: 0.3, 7: 0.3, 11: 0.1, 15: 0.2, 19: hold[1]}
+    twist = {1: 0.0, 5: 0.25, 7: 0.3, 11: -0.3, 15: -0.2, 19: 0.0}
+    for f, a_ in ua:
+        c.key("upper_arm_R", f, X, a_)
+        c.key("forearm_R", f, X, fo[f])
+        c.key("chest", f, Z, twist[f])
+        c.key("upper_arm_L", f, X, -0.5 if f in (11, 15) else 0.0)
+        c.key("scarf_end", f, X, 0.4 if f in (11, 15) else 0.0)
     c.preview("swing", 11)
     c.end(19)
 
@@ -525,5 +630,5 @@ def build_centinela():
 
 
 if __name__ == "__main__":
-    build_canelita()
+    build_brisa()
     build_centinela()

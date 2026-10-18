@@ -4,7 +4,7 @@
 
 Dos juegos que se influyen: una **isla cozy** para explorar, jugar minijuegos y fabricar armas, y un
 **portal** a un infierno en 3D con combate pesado y animaciones al estilo DOOM: The Dark Ages.
-Coop **online de 2 jugadores**, asimétrico: una isleña (Canelita) y un guerrero (Slayer).
+Coop **online de 2 jugadores**, asimétrico: una exploradora (Brisa) y un guerrero (Centinela).
 
 Ciclo de juego: `hub ⇄ misión en el infierno ⇄ regreso al hub con botín`.
 
@@ -28,7 +28,7 @@ El cambio de mundo debe ser un único sistema (shaders + post-proceso + música)
 
 ## Hoja de ruta
 
-1. **Parte 1 (hecha):** isla, Canelita, aldeanos, mariposas, ciclo día/noche, grieta.
+1. **Parte 1 (hecha):** isla, Brisa, aldeanos, mariposas, ciclo día/noche, grieta.
 2. Conexión online de 2 jugadores moviéndose en la isla (ENet + relay/lobby con código de sala).
 3. Inventario compartido, minijuegos (pesca, insectos), banco de crafteo.
 4. Portal con transición y arena de combate; llegada del Slayer.

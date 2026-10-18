@@ -327,7 +327,7 @@ func _build_villagers() -> void:
 			"fur": Color(1, 0.93, 0.95), "accent": Color(1, 0.6, 0.75),
 			"lines": {
 				Story.Phase.PEACEFUL: [
-					"¡Hola, Canelita! Qué día más lindo para pasear por la isla.",
+					"¡Hola, Brisa! Qué día más lindo para pasear por la isla.",
 					"Dicen que hay mariposas muy bonitas cerca de las flores. ¿Me atrapas unas cuantas con tu red?",
 				],
 				Story.Phase.OMEN: [
