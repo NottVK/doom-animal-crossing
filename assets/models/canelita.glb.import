@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://c7e2cor1ffovm"
-path="res://.godot/imported/brisa.glb-ee71420929f4ae1f0c5de528fa537719.scn"
+uid="uid://bbd0mpwvcpr54"
+path="res://.godot/imported/canelita.glb-94d275575544aee5e7fbbef491a35686.scn"
 
 [deps]
 
-source_file="res://assets/models/brisa.glb"
-dest_files=["res://.godot/imported/brisa.glb-ee71420929f4ae1f0c5de528fa537719.scn"]
+source_file="res://assets/models/canelita.glb"
+dest_files=["res://.godot/imported/canelita.glb-94d275575544aee5e7fbbef491a35686.scn"]
 
 [params]
 

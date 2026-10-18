@@ -1,6 +1,6 @@
 class_name Player
 extends CharacterBody3D
-## Brisa (la exploradora) en vista lateral 2.5D: se camina de lado por un carril y solo se puede ir
+## Canelita en vista lateral 2.5D: se camina de lado por un carril y solo se puede ir
 ## al fondo/frente dentro de las zonas de profundidad (`lane_limits`).
 
 signal target_changed(target: Node3D)
@@ -31,7 +31,7 @@ var _shake_t := 0.0
 var _shake_amp := 0.0
 
 const SWING_TIME := 0.35
-const MODEL_PATH := "res://assets/models/brisa.glb"
+const MODEL_PATH := "res://assets/models/canelita.glb"
 
 
 func _ready() -> void:
@@ -88,7 +88,6 @@ func _load_model() -> Node3D:
 		var scene := load(MODEL_PATH) as PackedScene
 		if scene:
 			var inst := scene.instantiate() as Node3D
-			inst.scale = Vector3(1.2, 0.92, 1.2)   # un poco más robusta para convivir con los aldeanos
 			CharacterModel.apply_toon(inst)
 			_anim = _find_anim_player(inst)
 			if _anim:

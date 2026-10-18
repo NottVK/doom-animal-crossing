@@ -3,9 +3,9 @@
 Uso (con el módulo bpy instalado):
     python tools/blender/build_characters.py assets/models [carpeta_de_previews]
 
-Salida: brisa.glb y centinela.glb. El frente de los modelos mira a +Y en Blender, que al
+Salida: canelita.glb y centinela.glb (build_brisa queda como diseño alterno, no se exporta). El frente de los modelos mira a +Y en Blender, que al
 exportar a glTF (Y arriba) queda mirando a -Z, igual que en Godot.
-Animaciones: idle-loop, walk-loop y swing (Brisa) / attack (Centinela).
+Animaciones: idle-loop, walk-loop y swing (Canelita) / attack (Centinela).
 """
 import math
 import os
@@ -460,6 +460,151 @@ def build_brisa():
 
 
 # =====================================================================
+# Canelita: perrita chibi (pelaje caramelo y blanco, overol azul; diseño propio)
+# =====================================================================
+def build_canelita():
+    c = Character("Canelita")
+    rad = math.radians
+    fur = c.mat("fur", (0.82, 0.54, 0.26))
+    fur_dk = c.mat("fur_dk", (0.62, 0.37, 0.16))
+    cream = c.mat("cream", (1.0, 0.95, 0.85))
+    inner_ear = c.mat("inner_ear", (1.0, 0.72, 0.70))
+    dark = c.mat("dark", (0.10, 0.07, 0.07), rough=0.4)
+    white = c.mat("white", (1, 1, 1), rough=0.3)
+    pink = c.mat("pink", (1.0, 0.55, 0.62))
+    denim = c.mat("denim", (0.35, 0.58, 0.85))
+    denim_dk = c.mat("denim_dk", (0.25, 0.45, 0.72))
+    coral = c.mat("coral", (1.0, 0.52, 0.42))
+    brass = c.mat("brass", (0.95, 0.78, 0.25), rough=0.35)
+    leaf = c.mat("leaf", (0.45, 0.78, 0.40))
+    sneaker = c.mat("sneaker", (0.98, 0.98, 0.96))
+    wood = c.mat("wood", (0.62, 0.44, 0.28))
+    ring = c.mat("ring", (0.9, 0.28, 0.28))
+    mesh_m = c.mat("net", (1, 1, 1), alpha=0.4)
+
+    # cuerpo con overol: peto con bolsillo, tirantes con botones, short
+    c.sphere("body", (0, 0, 0.82), (0.43, 0.36, 0.46), fur, "hips")
+    c.sphere("belly", (0, 0.10, 0.90), (0.31, 0.26, 0.31), cream, "chest")
+    c.sphere("overall", (0, 0.04, 0.72), (0.45, 0.38, 0.34), denim, "hips")
+    c.sphere("bib", (0, 0.15, 0.93), (0.30, 0.20, 0.24), denim_dk, "chest")
+    c.sphere("bib_pocket", (0, 0.335, 0.88), (0.12, 0.03, 0.09), denim, "chest")
+    for sd in (-1, 1):
+        c.sphere("strap", (sd * 0.20, 0.09, 1.10), (0.05, 0.04, 0.15), denim_dk, "chest")
+        c.sphere("button", (sd * 0.20, 0.17, 1.0), (0.035, 0.022, 0.035), brass, "chest")
+    c.sphere("tail", (0, -0.44, 0.70), (0.12, 0.15, 0.12), fur, "tail")
+    c.sphere("tail_tip", (0, -0.53, 0.72), (0.085, 0.09, 0.085), cream, "tail")
+    c.torus("scarf", (0, 0.03, 1.06), 0.31, 0.06, coral, "chest")
+    c.sphere("scarf_tail", (0.20, 0.28, 0.98), (0.10, 0.04, 0.20), coral, "chest", rot=(0, 0, rad(-12)))
+
+    # cabeza redonda: mejillas blancas, hocico ancho, franja, ojos grandes, orejas paradas
+    c.sphere("head", (0, 0, 1.42), (0.47, 0.42, 0.41), fur, "head")
+    c.sphere("blaze", (0, 0.34, 1.52), (0.07, 0.06, 0.20), cream, "head")
+    c.sphere("muzzle", (0, 0.33, 1.33), (0.23, 0.19, 0.16), cream, "head")
+    c.sphere("nose", (0, 0.505, 1.375), (0.07, 0.05, 0.05), dark, "head")
+    c.sphere("nose_shine", (0.018, 0.54, 1.39), (0.018, 0.012, 0.012), white, "head")
+    c.sphere("mouth", (0, 0.515, 1.295), (0.08, 0.02, 0.012), dark, "head")
+    c.sphere("tongue", (0, 0.50, 1.27), (0.042, 0.03, 0.022), pink, "head")
+    for sd in (-1, 1):
+        side = "L" if sd < 0 else "R"
+        c.sphere("cheek", (sd * 0.37, 0.14, 1.32), (0.15, 0.13, 0.13), cream, "head")
+        c.sphere("eye", (sd * 0.17, 0.37, 1.49), (0.068, 0.042, 0.095), dark, "head")
+        c.sphere("shine", (sd * 0.155, 0.405, 1.525), (0.025, 0.02, 0.025), white, "head")
+        c.sphere("shine2", (sd * 0.185, 0.405, 1.46), (0.012, 0.01, 0.012), white, "head")
+        c.sphere("brow", (sd * 0.17, 0.35, 1.60), (0.075, 0.025, 0.02), fur_dk, "head", rot=(0, 0, rad(sd * 14)))
+        c.sphere("blush", (sd * 0.30, 0.29, 1.39), (0.075, 0.02, 0.05), pink, "head")
+        tilt = rad(sd * 14)
+        c.cone("ear", (sd * 0.27, -0.02, 1.80), 0.14, 0.36, fur, "ear_" + side, rot=(0, tilt, 0))
+        c.cone("ear_in", (sd * 0.27, 0.03, 1.78), 0.085, 0.28, inner_ear, "ear_" + side, rot=(0, tilt, 0))
+        # brazos con manga corta, manos con pulgar y nudillos
+        c.sphere("arm", (sd * 0.46, 0, 0.86), (0.10, 0.10, 0.24), fur, "arm_" + side)
+        c.sphere("sleeve", (sd * 0.46, 0, 1.00), (0.125, 0.125, 0.13), coral, "arm_" + side)
+        c.sphere("hand", (sd * 0.46, 0.04, 0.60), (0.105, 0.105, 0.105), cream, "hand_" + side)
+        c.sphere("thumb", (sd * 0.53, 0.08, 0.62), (0.04, 0.05, 0.055), cream, "hand_" + side)
+        for i in (-1, 0, 1):
+            c.sphere("knuckle", (sd * 0.46 + i * 0.045, 0.125, 0.575), (0.036, 0.036, 0.036), cream, "hand_" + side)
+        # piernas: short de overol, calcetín y zapatillas blancas con suela coral
+        c.sphere("short", (sd * 0.18, 0, 0.40), (0.15, 0.15, 0.13), denim, "leg_" + side)
+        c.sphere("leg", (sd * 0.18, 0, 0.27), (0.115, 0.115, 0.17), fur, "leg_" + side)
+        c.sphere("sock", (sd * 0.18, 0, 0.17), (0.125, 0.125, 0.07), cream, "leg_" + side)
+        c.sphere("shoe", (sd * 0.18, 0.06, 0.085), (0.14, 0.21, 0.085), sneaker, "leg_" + side)
+        c.sphere("toe", (sd * 0.18, 0.21, 0.085), (0.105, 0.09, 0.065), sneaker, "leg_" + side)
+        c.sphere("stripe", (sd * 0.18, 0.09, 0.11), (0.145, 0.05, 0.02), coral, "leg_" + side)
+        c.sphere("sole", (sd * 0.18, 0.07, 0.03), (0.145, 0.23, 0.035), coral, "leg_" + side)
+    # pasador de hoja en la cabeza
+    c.sphere("leaf", (0.30, 0.27, 1.70), (0.075, 0.025, 0.12), leaf, "head", rot=(0, 0, rad(-35)))
+    c.sphere("leaf2", (0.20, 0.31, 1.66), (0.06, 0.022, 0.10), leaf, "head", rot=(0, 0, rad(25)))
+
+    # red de atrapar mariposas (parte de la mano derecha)
+    c.cylinder("pole", (0.46, 0.75, 0.62), 0.028, 1.5, wood, "hand_R", rot=(rad(90), 0, 0))
+    c.cylinder("grip", (0.46, 0.10, 0.62), 0.036, 0.22, ring, "hand_R", rot=(rad(90), 0, 0))
+    c.torus("hoop", (0.46, 1.62, 0.62), 0.24, 0.025, ring, "hand_R", rot=(0, rad(90), 0))
+    c.sphere("net", (0.46, 1.62, 0.62), (0.015, 0.22, 0.22), mesh_m, "hand_R")
+
+    bones = [
+        ("root", (0, 0, 0), (0, 0, 0.15), None),
+        ("hips", (0, 0, 0.5), (0, 0, 0.8), "root"),
+        ("chest", (0, 0, 0.8), (0, 0, 1.15), "hips"),
+        ("head", (0, 0, 1.15), (0, 0, 1.8), "chest"),
+        ("ear_L", (-0.27, 0, 1.62), (-0.31, 0, 1.97), "head"),
+        ("ear_R", (0.27, 0, 1.62), (0.31, 0, 1.97), "head"),
+        ("tail", (0, -0.38, 0.66), (0, -0.62, 0.74), "hips"),
+        ("arm_L", (-0.44, 0, 1.08), (-0.46, 0, 0.68), "chest"),
+        ("arm_R", (0.44, 0, 1.08), (0.46, 0, 0.68), "chest"),
+        ("hand_L", (-0.46, 0, 0.68), (-0.46, 0.05, 0.52), "arm_L"),
+        ("hand_R", (0.46, 0, 0.68), (0.46, 0.05, 0.52), "arm_R"),
+        ("leg_L", (-0.18, 0, 0.5), (-0.18, 0, 0.06), "hips"),
+        ("leg_R", (0.18, 0, 0.5), (0.18, 0, 0.06), "hips"),
+    ]
+    c.make_armature(bones)
+    c.finish_mesh()
+    c.preview("rest")
+
+    X, Z = "X", "Z"
+    hold = 0.2   # el brazo derecho sostiene la red hacia adelante
+
+    # idle: respira, mueve orejas y cola
+    c.begin("idle-loop")
+    for f in range(1, 62, 6):
+        t = (f - 1) / 60.0 * math.tau
+        c.key("chest", f, X, 0.03 * math.sin(t))
+        c.key("head", f, X, 0.04 * math.sin(t + 0.6))
+        c.key("ear_L", f, X, 0.10 * max(0.0, math.sin(2 * t)))
+        c.key("ear_R", f, X, 0.08 * max(0.0, math.sin(2 * t + 1.5)))
+        c.key("tail", f, Z, 0.5 * math.sin(2 * t))
+        c.key("arm_R", f, X, hold + 0.04 * math.sin(t))
+        c.key("arm_L", f, X, 0.05 * math.sin(t))
+    c.end(61)
+
+    # walk: piernas y brazos alternados, rebote del cuerpo
+    c.begin("walk-loop")
+    for f in range(1, 26, 2):
+        t = (f - 1) / 24.0 * math.tau
+        s_ = math.sin(t)
+        c.key("leg_L", f, X, 0.75 * s_)
+        c.key("leg_R", f, X, -0.75 * s_)
+        c.key("arm_L", f, X, -0.55 * s_)
+        c.key("arm_R", f, X, hold + 0.20 * s_)
+        c.key("hips", f, loc=(0, 0, abs(math.sin(t)) * 0.05))
+        c.key("chest", f, Z, 0.05 * s_)
+        c.key("head", f, X, 0.05 * abs(s_))
+        c.key("ear_L", f, X, 0.2 * abs(s_))
+        c.key("ear_R", f, X, 0.2 * abs(s_))
+        c.key("tail", f, Z, 0.7 * s_)
+    c.preview("walk", 4)
+    c.end(25)
+
+    # swing: la red sube y golpea hacia adelante
+    c.begin("swing")
+    for f, a_ in [(1, hold), (5, 2.4), (7, 2.5), (11, 0.1), (15, 0.0), (19, hold)]:
+        c.key("arm_R", f, X, a_)
+        c.key("chest", f, X, -0.15 if f in (5, 7) else (0.12 if f in (11, 15) else 0.0))
+    c.preview("swing", 11)
+    c.end(19)
+
+    c.export()
+
+
+# =====================================================================
 # Centinela: guerrero de armadura verde (inspirado en el estilo, diseño propio)
 # =====================================================================
 def build_centinela():
@@ -630,5 +775,5 @@ def build_centinela():
 
 
 if __name__ == "__main__":
-    build_brisa()
+    build_canelita()
     build_centinela()
