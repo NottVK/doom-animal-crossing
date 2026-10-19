@@ -25,7 +25,7 @@ static func mesh(model: String) -> Mesh:
 	for i in m.get_surface_count():
 		var src := m.surface_get_material(i) as BaseMaterial3D
 		if src:
-			m.surface_set_material(i, CharacterModel.toon_from(src))
+			m.surface_set_material(i, CharacterModel.toon_from(src, CharacterModel.has_vertex_colors(m, i)))
 	node.free()
 	_mesh_cache[model] = m
 	return m

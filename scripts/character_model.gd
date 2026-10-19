@@ -69,7 +69,7 @@ static func apply_toon(root: Node) -> void:
 		for i in mi.mesh.get_surface_count():
 			var src := mi.mesh.surface_get_material(i) as BaseMaterial3D
 			if src:
-				mi.set_surface_override_material(i, toon_from(src))
+				mi.set_surface_override_material(i, toon_from(src, has_vertex_colors(mi.mesh, i)))
 	for child in root.get_children():
 		apply_toon(child)
 
@@ -77,15 +77,22 @@ static func apply_toon(root: Node) -> void:
 static var _toon_cache := {}
 
 
+## True si esa superficie de la malla trae colores por vértice (los modelos "orgánicos").
+static func has_vertex_colors(mesh: Mesh, surface: int) -> bool:
+	return mesh is ArrayMesh and ((mesh as ArrayMesh).surface_get_format(surface) & Mesh.ARRAY_FORMAT_COLOR) != 0
+
+
 ## Material toon equivalente a un material importado (mismo color, color de vértice y brillo).
 ## Se reutiliza por material de origen, así cien árboles iguales comparten material.
-static func toon_from(src: BaseMaterial3D) -> ShaderMaterial:
-	var key := src.get_instance_id()
+## Según la versión de Godot el importador marca o no vertex_color_use_as_albedo, así que
+## también se mira si la malla trae colores.
+static func toon_from(src: BaseMaterial3D, vertex_colors := false) -> ShaderMaterial:
+	var key := "%d_%s" % [src.get_instance_id(), vertex_colors]
 	if _toon_cache.has(key):
 		return _toon_cache[key]
 	var color := src.albedo_color
 	var m := mat(color, color.a < 0.99)
-	if src.vertex_color_use_as_albedo:
+	if src.vertex_color_use_as_albedo or vertex_colors:
 		m.set_shader_parameter("use_vertex_color", true)
 		m.set_shader_parameter("vertex_color_gamma", true)
 	if src.emission_enabled:
