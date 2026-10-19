@@ -68,19 +68,31 @@ static func apply_toon(root: Node) -> void:
 		var mi := root as MeshInstance3D
 		for i in mi.mesh.get_surface_count():
 			var src := mi.mesh.surface_get_material(i) as BaseMaterial3D
-			if src == null:
-				continue
-			var color := src.albedo_color
-			var m := mat(color, color.a < 0.99)
-			if src.vertex_color_use_as_albedo:
-				m.set_shader_parameter("use_vertex_color", true)
-				m.set_shader_parameter("vertex_color_gamma", true)
-			if src.emission_enabled:
-				m.set_shader_parameter("emission_color", src.emission)
-				m.set_shader_parameter("emission_energy", src.emission_energy_multiplier)
-			mi.set_surface_override_material(i, m)
+			if src:
+				mi.set_surface_override_material(i, toon_from(src))
 	for child in root.get_children():
 		apply_toon(child)
+
+
+static var _toon_cache := {}
+
+
+## Material toon equivalente a un material importado (mismo color, color de vértice y brillo).
+## Se reutiliza por material de origen, así cien árboles iguales comparten material.
+static func toon_from(src: BaseMaterial3D) -> ShaderMaterial:
+	var key := src.get_instance_id()
+	if _toon_cache.has(key):
+		return _toon_cache[key]
+	var color := src.albedo_color
+	var m := mat(color, color.a < 0.99)
+	if src.vertex_color_use_as_albedo:
+		m.set_shader_parameter("use_vertex_color", true)
+		m.set_shader_parameter("vertex_color_gamma", true)
+	if src.emission_enabled:
+		m.set_shader_parameter("emission_color", src.emission)
+		m.set_shader_parameter("emission_energy", src.emission_energy_multiplier)
+	_toon_cache[key] = m
+	return m
 
 
 ## Material que brilla (grieta, brasas).

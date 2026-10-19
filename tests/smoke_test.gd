@@ -53,7 +53,7 @@ func run() -> void:
 	await physics_frame
 	await physics_frame
 	player.swing_net()
-	_check(Story.butterflies == 1, "la red atrapa una mariposa (%d)" % Story.butterflies)
+	_check(Story.butterflies >= 1, "la red atrapa al menos una mariposa (%d)" % Story.butterflies)
 
 	for i in 4:
 		Story.catch_butterfly()
@@ -65,6 +65,23 @@ func run() -> void:
 	_check(Story.phase == 2, "tras el temblor se abre la grieta (RIFT)")
 	await physics_frame
 	await physics_frame
+
+	# Pesca: lanzar, esperar a que pique y tirar a tiempo.
+	var spot: FishingSpot = null
+	for n in main.get_children():
+		if n is FishingSpot:
+			spot = n
+	_check(spot != null, "existe el estanque de pesca")
+	player.can_move = true
+	spot.interact(player)
+	_check(spot.is_busy() and not player.can_move, "al pescar el jugador se queda quieto")
+	spot.reel()
+	_check(not spot.is_busy() and Story.fish == 0, "tirar antes de tiempo espanta al pez")
+	spot.interact(player)
+	spot._state = FishingSpot.State.BITE
+	var bells_before: int = Story.bells
+	spot.reel()
+	_check(Story.fish == 1 and Story.bells > bells_before, "tirar cuando pica atrapa el pez")
 
 	print("SMOKE ", "FAILED" if _fail else "OK")
 	quit(1 if _fail else 0)

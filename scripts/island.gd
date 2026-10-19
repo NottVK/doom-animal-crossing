@@ -18,7 +18,7 @@ const DEPTH_ZONES := [
 	{ "x": -24.0, "half": 2.2, "edge": 1.5, "zmin": -4.3, "zmax": 0.7 },
 	{ "x": 18.0, "half": 2.2, "edge": 1.5, "zmin": -4.3, "zmax": 0.7 },
 	{ "x": 30.0, "half": 2.2, "edge": 1.5, "zmin": -4.3, "zmax": 0.7 },
-	{ "x": -33.0, "half": 4.0, "edge": 2.0, "zmin": -0.7, "zmax": 6.5 },
+	{ "x": -31.0, "half": 2.5, "edge": 1.5, "zmin": -0.7, "zmax": 2.7 },   # orilla del estanque
 ]
 
 var _rng := RandomNumberGenerator.new()
@@ -39,11 +39,11 @@ func _ready() -> void:
 	_rng.seed = 20200320
 	_build_environment()
 	_build_terrain()
-	_build_plaza()
 	_build_houses()
-	_build_trees()
+	_build_props()
+	_build_vegetation()
+	_build_pond()
 	_build_scenery()
-	_build_flowers()
 	_build_villagers()
 	_build_player()
 	_build_hud()
@@ -129,7 +129,68 @@ func _plane(size: Vector2, pos: Vector3, color: Color, sub_w: int, sub_d: int, a
 	return mi
 
 
+const POND := Vector2(-31.0, 5.6)
+const POND_R := 2.6
+const PLAZA_C := Vector2(0.0, -0.5)
+
+var _noise := FastNoiseLite.new()
+var _noise2 := FastNoiseLite.new()
+
+
+## Suelo plano en las zonas por donde se camina (carril, plaza, patios); relieve en el resto.
+func _flat_mask(x: float, z: float) -> float:
+	var m := smoothstep(2.4, 5.0, absf(z))
+	m *= smoothstep(PLAZA_RADIUS + 1.0, PLAZA_RADIUS + 3.5, Vector2(x, z).distance_to(PLAZA_C))
+	for hx: float in HOUSE_XS:
+		m *= smoothstep(3.8, 6.0, Vector2(x, z).distance_to(Vector2(hx, -6.5)))
+	return m
+
+
+## Altura del suelo: colinas suaves al fondo, estanque hundido y orilla que baja al mar.
+func ground_height(x: float, z: float) -> float:
+	var n := _noise.get_noise_2d(x, z)
+	var back := 1.0 - smoothstep(-16.0, -6.0, z)
+	var h := back * (0.5 + n * 1.3) + n * 0.12
+	h *= _flat_mask(x, z)
+	h -= smoothstep(10.0, 14.0, z) * 0.9
+	var dp := Vector2(x, z).distance_to(POND)
+	if dp < POND_R + 0.8:
+		h = lerpf(-0.6, h, smoothstep(POND_R - 0.9, POND_R + 0.8, dp))
+	return h
+
+
+## Color del suelo: pasto con matices, caminos de tierra de borde irregular, plaza empedrada y arena.
+func _ground_color(x: float, z: float, h: float) -> Color:
+	var n2 := _noise2.get_noise_2d(x, z)
+	var col := Color(0.42, 0.66, 0.33).lerp(Color(0.50, 0.72, 0.38), n2 * 0.5 + 0.5)
+	col = col.lerp(Color(0.34, 0.56, 0.28), clampf(h * 0.3, 0.0, 0.35))
+	col = col.lerp(Color(0.88, 0.80, 0.60), smoothstep(8.6, 9.6, z + n2 * 0.6))
+	var dp := Vector2(x, z).distance_to(POND)
+	col = col.lerp(Color(0.80, 0.72, 0.55), 1.0 - smoothstep(POND_R + 0.3, POND_R + 1.0, dp + n2 * 0.3))
+
+	var dirt := Color(0.74, 0.60, 0.42).lerp(Color(0.68, 0.54, 0.37), n2 * 0.5 + 0.5)
+	var path := 1.0 - smoothstep(1.0, 1.3, absf(z) + n2 * 0.25)
+	for hx: float in HOUSE_XS:
+		if z < 0.5 and z > -4.6:
+			path = maxf(path, 1.0 - smoothstep(0.75, 1.05, absf(x - hx) + n2 * 0.2))
+	if z > 0.0 and z < POND.y - POND_R + 0.4:
+		path = maxf(path, 1.0 - smoothstep(0.75, 1.05, absf(x - POND.x) + n2 * 0.2))
+	col = col.lerp(dirt, path)
+
+	var dpl := Vector2(x, z).distance_to(PLAZA_C)
+	var tile := posmod(int(floor(x / 1.1)) + int(floor(z / 1.1)), 2)
+	var stone := Color(0.82, 0.74, 0.62) if tile == 0 else Color(0.76, 0.68, 0.57)
+	stone = stone.lerp(Color(0.62, 0.57, 0.50), clampf(n2, 0.0, 1.0) * 0.5)
+	col = col.lerp(stone, 1.0 - smoothstep(PLAZA_RADIUS - 0.2, PLAZA_RADIUS + 0.2, dpl + n2 * 0.3))
+	return col
+
+
 func _build_terrain() -> void:
+	_noise.seed = 7
+	_noise.frequency = 0.035
+	_noise2.seed = 11
+	_noise2.frequency = 0.18
+
 	var ground := StaticBody3D.new()
 	ground.collision_layer = 1
 	add_child(ground)
@@ -140,82 +201,112 @@ func _build_terrain() -> void:
 	col.position = Vector3(0, -1, -5)
 	ground.add_child(col)
 
-	# Subdividido para que el shader pueda curvar el horizonte.
-	_plane(Vector2(120, 44), Vector3(0, 0, -10), Color(0.5, 0.74, 0.38), 60, 22)
-	_plane(Vector2(120, 8), Vector3(0, -0.05, 14), Color(0.95, 0.85, 0.62), 60, 4)
-	_plane(Vector2(120, 2.6), Vector3(0, 0.03, 0), Color(0.8, 0.62, 0.38), 60, 1)
+	# Malla del suelo generada: relieve, normales y color por vértice.
+	var step := 0.6
+	var x0 := -60.0
+	var z0 := -34.0
+	var nx := int(120.0 / step) + 1
+	var nz := int(50.0 / step) + 1
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var cols := PackedColorArray()
+	verts.resize(nx * nz)
+	norms.resize(nx * nz)
+	cols.resize(nx * nz)
+	var e := 0.3
+	for j in nz:
+		for i in nx:
+			var x := x0 + i * step
+			var z := z0 + j * step
+			var h := ground_height(x, z)
+			var k := j * nx + i
+			verts[k] = Vector3(x, h, z)
+			norms[k] = Vector3(ground_height(x - e, z) - ground_height(x + e, z), 2.0 * e,
+					ground_height(x, z - e) - ground_height(x, z + e)).normalized()
+			cols[k] = _ground_color(x, z, h).srgb_to_linear()
+	var idx := PackedInt32Array()
+	for j in nz - 1:
+		for i in nx - 1:
+			var a := j * nx + i
+			var c := a + nx
+			idx.append_array([a, a + 1, c, a + 1, c + 1, c])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = norms
+	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_INDEX] = idx
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var mi := MeshInstance3D.new()
+	mi.mesh = am
+	var m := CharacterModel.mat(Color.WHITE)
+	m.set_shader_parameter("use_vertex_color", true)
+	mi.material_override = m
+	add_child(mi)
+
 	_plane(Vector2(700, 700), Vector3(0, -0.6, 0), Color(0.4, 0.78, 0.92, 0.85), 70, 70, true)
 
 
-func _build_plaza() -> void:
-	var plaza := CylinderMesh.new()
-	plaza.top_radius = PLAZA_RADIUS
-	plaza.bottom_radius = PLAZA_RADIUS
-	plaza.height = 0.06
-	CharacterModel.add_mesh(self, plaza, Color(0.8, 0.62, 0.38), Vector3(0, 0.04, -0.5))
-	_occupied.append(Vector3(0, 0, -0.5))
+func _place(model: String, pos: Vector3, rot_y := 0.0, scl := 1.0) -> Node3D:
+	var n := WorldAssets.instance(model)
+	n.position = pos
+	n.rotation.y = rot_y
+	n.scale = Vector3.ONE * scl
+	add_child(n)
+	return n
 
-	var sign_post := StaticBody3D.new()
-	sign_post.position = Vector3(4.5, 0, -3.5)
-	add_child(sign_post)
-	CharacterModel.add_mesh(sign_post, CharacterModel.capsule(0.08, 1.4), Color(0.6, 0.42, 0.28), Vector3(0, 0.7, 0))
-	var board := BoxMesh.new()
-	board.size = Vector3(1.8, 0.7, 0.1)
-	CharacterModel.add_mesh(sign_post, board, Color(0.98, 0.9, 0.7), Vector3(0, 1.5, 0))
+
+func _build_houses() -> void:
+	var models := ["house_a", "house_b", "house_c"]
+	for i in HOUSE_XS.size():
+		var pos := Vector3(HOUSE_XS[i], 0.0, -6.5)
+		_occupied.append(pos)
+		_place(models[i], pos, PI)   # la puerta mira a la cámara
+		var body := StaticBody3D.new()
+		body.position = pos
+		add_child(body)
+		var col := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(4.4, 3.0, 4.4)
+		col.shape = shape
+		col.position.y = 1.5
+		body.add_child(col)
+
+
+## Letrero de la plaza, farolas en el camino y tramos de cerca.
+func _build_props() -> void:
+	_occupied.append(Vector3(PLAZA_C.x, 0, PLAZA_C.y))
+	_place("signboard", Vector3(4.5, 0, -3.5), PI)
 	var label := Label3D.new()
 	label.text = "Isla Calma"
 	label.font_size = 64
 	label.pixel_size = 0.0075
 	label.modulate = Color("5b4636")
-	label.position = Vector3(0, 1.5, 0.07)
-	sign_post.add_child(label)
-	var col := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = Vector3(1.8, 2, 0.3)
-	col.shape = shape
-	col.position.y = 1.0
-	sign_post.add_child(col)
+	label.position = Vector3(4.5, 1.45, -3.43)
+	add_child(label)
+	for x in [-16.0, -7.5, 9.0, 25.0]:
+		_place("lamp", Vector3(x, 0, -1.8))
+	for row in [[-19.5, -12.0], [11.0, 14.0], [22.5, 26.0]]:
+		var x: float = row[0]
+		while x <= row[1]:
+			_place("fence", Vector3(x, 0, -2.4))
+			x += 1.9
 
 
-func _build_houses() -> void:
-	var walls: Array[Color] = [Color(1.0, 0.92, 0.75), Color(1.0, 0.82, 0.88), Color(0.83, 0.94, 0.83)]
-	var roofs: Array[Color] = [Color(0.95, 0.52, 0.45), Color(0.5, 0.7, 0.95), Color(0.9, 0.7, 0.35)]
-	for i in HOUSE_XS.size():
-		var x: float = HOUSE_XS[i]
-		var pos := Vector3(x, 0.0, -6.5)
-		_occupied.append(pos)
-		_build_house(pos, walls[i], roofs[i])
-		# Caminito del carril a la puerta.
-		var path := BoxMesh.new()
-		path.size = Vector3(1.8, 0.05, 4.4)
-		CharacterModel.add_mesh(self, path, Color(0.8, 0.62, 0.38), Vector3(x, 0.03, -2.2))
-
-
-func _build_house(pos: Vector3, wall: Color, roof: Color) -> void:
-	var h := StaticBody3D.new()
-	h.position = pos
-	add_child(h)   # la puerta mira a +Z, hacia la cámara
-
-	var body := BoxMesh.new()
-	body.size = Vector3(4, 2.6, 4)
-	CharacterModel.add_mesh(h, body, wall, Vector3(0, 1.3, 0))
-	var roof_mesh := PrismMesh.new()
-	roof_mesh.size = Vector3(5.2, 1.8, 5.2)
-	CharacterModel.add_mesh(h, roof_mesh, roof, Vector3(0, 3.5, 0), Vector3.ONE, Vector3(0, 90, 0))
-	var door := BoxMesh.new()
-	door.size = Vector3(1, 1.7, 0.1)
-	CharacterModel.add_mesh(h, door, Color(0.6, 0.42, 0.28), Vector3(0, 0.85, 2.03))
-	var window := BoxMesh.new()
-	window.size = Vector3(0.8, 0.8, 0.1)
-	for side in [-1, 1]:
-		CharacterModel.add_mesh(h, window, Color(0.75, 0.93, 1.0), Vector3(side * 1.3, 1.5, 2.03))
-
-	var col := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = Vector3(4, 2.6, 4)
-	col.shape = shape
-	col.position.y = 1.3
-	h.add_child(col)
+func _in_walkway(x: float, z: float) -> bool:
+	if absf(z) < 1.8:
+		return true
+	if Vector2(x, z).distance_to(PLAZA_C) < PLAZA_RADIUS + 0.8:
+		return true
+	for hx: float in HOUSE_XS:
+		if absf(x - hx) < 1.6 and z > -5.0 and z < 1.0:
+			return true
+	if Vector2(x, z).distance_to(POND) < POND_R + 1.2:
+		return true
+	if absf(x - POND.x) < 1.6 and z > 0.0 and z < POND.y:
+		return true
+	return false
 
 
 func _is_blocked(p: Vector3, dist: float) -> bool:
@@ -225,42 +316,112 @@ func _is_blocked(p: Vector3, dist: float) -> bool:
 	return false
 
 
-func _build_trees() -> void:
+## Árboles, arbustos, rocas, flores y pasto (modelos de Blender).
+func _build_vegetation() -> void:
+	var trees := ["tree_round", "tree_round2", "tree_fruit", "tree_cedar"]
 	var count := 0
 	var tries := 0
-	while count < 46 and tries < 800:
+	while count < 44 and tries < 900:
 		tries += 1
-		var p := Vector3(_rng.randf_range(-46.0, 46.0), 0.0, _rng.randf_range(-19.0, -9.5))
-		if _is_blocked(p, 5.0):
+		var p := Vector3(_rng.randf_range(-48.0, 48.0), 0.0, _rng.randf_range(-24.0, -9.5))
+		if _is_blocked(p, 4.6):
 			continue
 		_occupied.append(p)
 		count += 1
-		_add_tree(p)
+		p.y = ground_height(p.x, p.z) - 0.1
+		var model: String = trees[_rng.randi() % trees.size()]
+		_place(model, p, _rng.randf() * TAU, _rng.randf_range(0.85, 1.15))
+
+	# arbustos a los lados del camino, fuera de las zonas de paso
+	var bushes := 0
+	tries = 0
+	while bushes < 24 and tries < 600:
+		tries += 1
+		var x := _rng.randf_range(-44.0, 44.0)
+		var z := _rng.randf_range(-4.2, -2.6) if _rng.randf() < 0.5 else _rng.randf_range(2.6, 4.4)
+		var p := Vector3(x, 0, z)
+		if _in_walkway(x, z) or lane_range(x).y > 1.0 or lane_range(x).x < -1.0 or _is_blocked(p, 2.2):
+			continue
+		_occupied.append(p)
+		bushes += 1
+		_place("bush_pink" if _rng.randf() < 0.5 else "bush_white", p, _rng.randf() * TAU, _rng.randf_range(0.8, 1.2))
+
+	for i in 12:
+		var p := Vector3(_rng.randf_range(-46.0, 46.0), 0, _rng.randf_range(-12.0, -5.0))
+		if _in_walkway(p.x, p.z) or _is_blocked(p, 2.5):
+			continue
+		p.y = ground_height(p.x, p.z) - 0.05
+		_place("rock" if i % 2 else "rock2", p, _rng.randf() * TAU, _rng.randf_range(0.7, 1.3))
+
+	_scatter("grass", 2200, 0.8, 1.4, -14.0, 9.0)
+	_scatter("flower_red", 160, 0.9, 1.4, -10.0, 8.0)
+	_scatter("flower_yellow", 160, 0.9, 1.4, -10.0, 8.0)
+	_scatter("flower_white", 140, 0.9, 1.4, -10.0, 8.0)
 
 
-func _add_tree(p: Vector3) -> void:
-	var tree := StaticBody3D.new()
-	tree.position = p
-	add_child(tree)
-	var trunk := CylinderMesh.new()
-	trunk.top_radius = 0.28
-	trunk.bottom_radius = 0.36
-	trunk.height = 2.4
-	CharacterModel.add_mesh(tree, trunk, Color(0.6, 0.42, 0.28), Vector3(0, 1.2, 0))
-	var leaf := Color.from_hsv(_rng.randf_range(0.25, 0.36), 0.5, _rng.randf_range(0.8, 0.95))
-	CharacterModel.add_mesh(tree, CharacterModel.sphere(2.0), leaf, Vector3(0, 3.6, 0), Vector3(1, 0.9, 1))
-	CharacterModel.add_mesh(tree, CharacterModel.sphere(1.2), leaf.lightened(0.12), Vector3(0.9, 4.7, 0.3))
-	if _rng.randf() < 0.35:
-		for i in 5:
-			var fp := Vector3(_rng.randf_range(-1.5, 1.5), _rng.randf_range(2.9, 4.1), _rng.randf_range(0.5, 1.7))
-			CharacterModel.add_mesh(tree, CharacterModel.sphere(0.14), Color(1.0, 0.6, 0.2), fp)
-	var col := CollisionShape3D.new()
-	var shape := CylinderShape3D.new()
-	shape.radius = 0.4
-	shape.height = 3.0
-	col.shape = shape
-	col.position.y = 1.5
-	tree.add_child(col)
+## Reparte muchas copias de un modelo pequeño con un solo MultiMesh.
+func _scatter(model: String, amount: int, smin: float, smax: float, zmin: float, zmax: float) -> void:
+	var xforms: Array[Transform3D] = []
+	var tries := 0
+	while xforms.size() < amount and tries < amount * 6:
+		tries += 1
+		var x := _rng.randf_range(-50.0, 50.0)
+		var z := _rng.randf_range(zmin, zmax)
+		if _in_walkway(x, z):
+			continue
+		var y := ground_height(x, z)
+		if y < -0.25:
+			continue
+		var s := _rng.randf_range(smin, smax)
+		var basis := Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * s)
+		xforms.append(Transform3D(basis, Vector3(x, y, z)))
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = WorldAssets.mesh(model)
+	mm.instance_count = xforms.size()
+	for i in xforms.size():
+		mm.set_instance_transform(i, xforms[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	add_child(mmi)
+
+
+## Estanque con nenúfares, rocas, juncos y el punto de pesca.
+func _build_pond() -> void:
+	var water := CylinderMesh.new()
+	water.top_radius = POND_R + 0.1
+	water.bottom_radius = POND_R + 0.1
+	water.height = 0.04
+	water.radial_segments = 48
+	var wm := MeshInstance3D.new()
+	wm.mesh = water
+	wm.material_override = CharacterModel.mat(Color(0.22, 0.52, 0.72, 0.85), true)
+	wm.position = Vector3(POND.x, -0.2, POND.y)
+	add_child(wm)
+	for i in 3:
+		var a := 1.0 + i * 1.7
+		var p := Vector3(POND.x + cos(a) * 1.4, -0.17, POND.y + sin(a) * 1.3)
+		var pad := CylinderMesh.new()
+		pad.top_radius = 0.28
+		pad.bottom_radius = 0.28
+		pad.height = 0.02
+		CharacterModel.add_mesh(self, pad, Color(0.35, 0.62, 0.30), p)
+		if i == 1:
+			CharacterModel.add_mesh(self, CharacterModel.sphere(0.09), Color(1.0, 0.65, 0.78), p + Vector3(0.05, 0.05, 0))
+	for i in 7:
+		var a := PI + 0.3 + i * (PI - 0.6) / 6.0   # mitad trasera de la orilla
+		var p := Vector3(POND.x + cos(a) * (POND_R + 0.4), 0, POND.y - sin(a) * (POND_R + 0.4))
+		p.y = ground_height(p.x, p.z) - 0.05
+		if i % 2 == 0:
+			_place("rock" if i % 4 == 0 else "rock2", p, _rng.randf() * TAU, _rng.randf_range(0.5, 0.8))
+		else:
+			_place("grass", p, _rng.randf() * TAU, 2.2)
+
+	var spot := FishingSpot.new()
+	spot.position = Vector3(POND.x, 0, POND.y - POND_R - 0.3)
+	spot.pond_center = Vector3(POND.x, -0.18, POND.y)
+	spot.pond_radius = POND_R
+	add_child(spot)
 
 
 ## Colinas lejanas y nubes: dan profundidad al fondo y hacen que el horizonte se curve.
@@ -280,42 +441,6 @@ func _build_scenery() -> void:
 					Vector3(j * 4.0 - 6.0, _rng.randf_range(-0.5, 1.0), 0), Vector3(1, 0.6, 0.8))
 		add_child(c)
 		_clouds.append(c)
-
-
-func _build_flowers() -> void:
-	var palette: Array[Color] = [
-		Color(1, 0.55, 0.65), Color(1, 0.92, 0.4), Color(0.95, 0.95, 1),
-		Color(1, 0.7, 0.4), Color(0.82, 0.6, 1),
-	]
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.mesh = CharacterModel.sphere(0.12)
-	var spots: Array[Vector3] = []
-	var tries := 0
-	while spots.size() < 420 and tries < 3000:
-		tries += 1
-		var p := Vector3(_rng.randf_range(-44.0, 44.0), 0.1, _rng.randf_range(-9.0, 7.5))
-		if absf(p.z) < 1.7:
-			continue   # camino
-		if Vector2(p.x, p.z + 0.5).length() < PLAZA_RADIUS + 0.8:
-			continue
-		var on_path := false
-		for hx: float in HOUSE_XS:
-			if absf(p.x - hx) < 1.6 and p.z > -4.8:
-				on_path = true
-		if not on_path:
-			spots.append(p)
-	mm.instance_count = spots.size()
-	for i in spots.size():
-		mm.set_instance_transform(i, Transform3D(Basis(), spots[i]))
-		mm.set_instance_color(i, palette[_rng.randi() % palette.size()])
-	var mmi := MultiMeshInstance3D.new()
-	mmi.multimesh = mm
-	var m := CharacterModel.mat(Color.WHITE)
-	m.set_shader_parameter("use_vertex_color", true)
-	mmi.material_override = m
-	add_child(mmi)
 
 
 # ---------- personajes ----------
@@ -345,7 +470,8 @@ func _build_villagers() -> void:
 			"lines": {
 				Story.Phase.PEACEFUL: [
 					"Croac. La pesca está lenta hoy, pero el sol está perfecto.",
-					"Pronto habrá concursos en la isla. ¡Yo ya tengo mi caña lista!",
+					"¿Ya probaste el estanque del oeste? Acércate a la orilla y pulsa E para pescar.",
+					"Cuando el corcho se hunda de golpe, ¡tira! Si tiras antes, el pez se asusta.",
 				],
 				Story.Phase.OMEN: [
 					"Las ranas sentimos las vibraciones... y esto no es un temblor normal.",
@@ -400,6 +526,8 @@ func _build_hud() -> void:
 func _on_target_changed(target: Node3D) -> void:
 	if target is Villager:
 		_hud.set_prompt("[E] Hablar con %s" % (target as Villager).display_name)
+	elif target is FishingSpot:
+		_hud.set_prompt("[E] Pescar")
 	else:
 		_hud.set_prompt("")
 

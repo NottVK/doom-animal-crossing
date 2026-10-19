@@ -13,6 +13,7 @@ const BELLS_PER_BUTTERFLY := 120
 var phase: int = Phase.PEACEFUL
 var butterflies := 0
 var bells := 0
+var fish := 0
 
 
 func catch_butterfly() -> void:
@@ -21,6 +22,12 @@ func catch_butterfly() -> void:
 	stats_changed.emit()
 	if phase == Phase.PEACEFUL and butterflies >= BUTTERFLY_GOAL:
 		set_phase(Phase.OMEN)
+
+
+func catch_fish(reward: int) -> void:
+	fish += 1
+	bells += reward
+	stats_changed.emit()
 
 
 func set_phase(new_phase: int) -> void:
@@ -35,6 +42,7 @@ func reset() -> void:
 	phase = Phase.PEACEFUL
 	butterflies = 0
 	bells = 0
+	fish = 0
 	stats_changed.emit()
 
 

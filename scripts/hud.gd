@@ -126,7 +126,7 @@ func _build_ui() -> void:
 
 
 func _refresh() -> void:
-	_stats.text = "Campanas: %d    Mariposas: %d\n%s" % [Story.bells, Story.butterflies, Story.objective()]
+	_stats.text = "Campanas: %d    Mariposas: %d    Peces: %d\n%s" % [Story.bells, Story.butterflies, Story.fish, Story.objective()]
 
 
 func set_prompt(text: String) -> void:

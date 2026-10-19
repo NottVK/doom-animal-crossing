@@ -154,6 +154,12 @@ func swing_net() -> void:
 			area.call("catch_me")
 
 
+## Gira el modelo para mirar hacia un punto (por ejemplo, el estanque al pescar).
+func face_point(point: Vector3) -> void:
+	var d := point - global_position
+	_model.rotation.y = atan2(-d.x, -d.z)
+
+
 func shake(duration: float, amplitude: float) -> void:
 	_shake_t = duration
 	_shake_amp = amplitude

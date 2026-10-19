@@ -35,6 +35,9 @@ class Character:
         self.keep_separate = set()   # piezas de detalle que no se funden (ojos, nariz, red...)
         self.voxel = 0.014
         self.decimate = 0.3
+        self.displace = 0.0          # relieve irregular (follaje, rocas) tras el remesh
+        self.displace_scale = 0.4
+        self.gradient = None         # (z_oscuro, z_claro, factor_oscuro, factor_claro): sombreado por altura
 
     # ---------- materiales y mallas ----------
     def mat(self, key, rgb, rough=0.85, emit=None, strength=4.0, alpha=1.0):
@@ -206,6 +209,13 @@ class Character:
         rm = body.modifiers.new("remesh", "REMESH")
         rm.mode = "VOXEL"
         rm.voxel_size = self.voxel
+        if self.displace > 0.0:
+            tex = bpy.data.textures.new("relief", "CLOUDS")
+            tex.noise_scale = self.displace_scale
+            dp = body.modifiers.new("displace", "DISPLACE")
+            dp.texture = tex
+            dp.strength = self.displace
+            dp.mid_level = 0.5
         sm = body.modifiers.new("smooth", "LAPLACIANSMOOTH")
         sm.iterations = 4
         sm.lambda_factor = 0.8
@@ -231,6 +241,15 @@ class Character:
         self._apply_mods(body)
         bpy.ops.object.shade_smooth()
         body.data.color_attributes.active_color_name = "Col"
+        if self.gradient:
+            from mathutils import noise
+            z0, z1, lo, hi = self.gradient
+            attr = body.data.color_attributes["Col"]
+            for i, v in enumerate(body.data.vertices):
+                t = min(1.0, max(0.0, (v.co.z - z0) / (z1 - z0)))
+                f = (lo + (hi - lo) * t) * (1.0 + 0.12 * noise.noise(v.co * 2.5))
+                r, g, b, a = attr.data[i].color
+                attr.data[i].color = (r * f, g * f, b * f, a)
 
         m = bpy.data.materials.new("body")
         m.use_nodes = True
@@ -293,7 +312,7 @@ class Character:
         print("exportado", path)
 
     # ---------- vista previa ----------
-    def preview(self, tag, frame=None):
+    def preview(self, tag, frame=None, cam_loc=(2.8, 5.6, 1.9), target=(0, 0, 0.95), lens=60):
         if not PREVIEW:
             return
         os.makedirs(PREVIEW, exist_ok=True)
@@ -313,9 +332,9 @@ class Character:
         sun.rotation_euler = (math.radians(50), 0, math.radians(150))
         sc.collection.objects.link(sun)
         cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
-        cam.data.lens = 60
-        cam.location = (2.8, 5.6, 1.9)
-        cam.rotation_euler = (Vector((0, 0, 0.95)) - cam.location).to_track_quat("-Z", "Y").to_euler()
+        cam.data.lens = lens
+        cam.location = cam_loc
+        cam.rotation_euler = (Vector(target) - cam.location).to_track_quat("-Z", "Y").to_euler()
         sc.collection.objects.link(cam)
         sc.camera = cam
         sc.render.engine = "CYCLES"
